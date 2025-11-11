@@ -42,14 +42,16 @@ jobs:
             
             # 安装 Node.js (使用非官方构建镜像，避免从源码编译)
             # 参考: https://unofficial-builds.nodejs.org/
+            # 注意：需要与 Ubuntu 22.04 的 GLIBC 2.35 兼容
             export TMPDIR=/tmp
             export NVM_NODEJS_ORG_MIRROR=https://unofficial-builds.nodejs.org/download/release
             curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
             export NVM_DIR=\"\$HOME/.nvm\"
             [ -s \"\$NVM_DIR/nvm.sh\" ] && \. \"\$NVM_DIR/nvm.sh\"
-            # 使用非官方构建镜像安装 Node.js（快速，无需编译）
-            nvm install 22 || nvm install 20 || nvm install 18
-            nvm use 22 || nvm use 20 || nvm use 18
+            # 优先尝试安装 Node.js 18 LTS（与 GLIBC 2.35 兼容）
+            # 如果非官方构建不可用，尝试从源码编译（会很慢）
+            nvm install 18 --latest-npm || (export NVM_NODEJS_ORG_MIRROR=https://nodejs.org/dist && nvm install 18 --latest-npm) || nvm install 20 --latest-npm || nvm install 20
+            nvm use 18 || nvm use 20
             
             # 安装 Rust
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
