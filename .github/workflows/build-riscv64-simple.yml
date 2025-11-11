@@ -39,14 +39,22 @@ jobs:
               librsvg2-dev \
               pkg-config \
               ca-certificates \
-              gnupg
+              gnupg \
+              python3 \
+              python3-pip \
+              make \
+              gcc \
+              g++
             
             # 安装 Node.js (使用 nvm，因为 NodeSource 不支持 RISCV64)
+            # Node.js 官方不提供 RISCV64 预编译二进制，需要从源码编译
+            export TMPDIR=/tmp
             curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            nvm install 20
-            nvm use 20
+            # 从源码编译 Node.js（这会很慢，但这是唯一的方式）
+            nvm install -s 20 || nvm install -s 18 || nvm install -s 16
+            nvm use 20 || nvm use 18 || nvm use 16
             
             # 安装 Rust
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
