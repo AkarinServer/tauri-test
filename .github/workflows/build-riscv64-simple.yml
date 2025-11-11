@@ -22,6 +22,8 @@ jobs:
           arch: riscv64
           distro: ubuntu24.04
           githubToken: ${{ secrets.GITHUB_TOKEN }}
+          dockerRunArgs: |
+            --volume "${{ github.workspace }}:/workspace"
           run: |
             # 更新系统（在容器中通常以 root 运行，不需要 sudo）
             apt-get update
@@ -76,8 +78,11 @@ jobs:
             rustup target add riscv64gc-unknown-linux-gnu
             
             # 安装项目依赖
-            # 确保在正确的工作目录，并检查 package-lock.json
-            cd /workspace || cd /github/workspace || pwd
+            # 切换到工作目录
+            cd /workspace
+            echo "当前工作目录: $(pwd)"
+            ls -la
+            
             if [ -f package-lock.json ]; then
               echo "找到 package-lock.json，使用 npm ci"
               npm ci
@@ -85,10 +90,6 @@ jobs:
               echo "警告: package-lock.json 不存在，使用 npm install"
               npm install
             fi
-            
-            # 确保在项目根目录
-            cd /workspace || cd /github/workspace || pwd
-            ls -la
             
             # 构建前端
             npm run build
