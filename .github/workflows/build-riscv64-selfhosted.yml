@@ -104,6 +104,10 @@ jobs:
             rustup target add riscv64gc-unknown-linux-gnu
             echo "Rust installed: $(rustc --version)"
           fi
+          
+          # 确保 cargo 在后续步骤中可用
+          echo "PATH=$HOME/.cargo/bin:$PATH" >> $GITHUB_ENV
+          echo "CARGO_HOME=$HOME/.cargo" >> $GITHUB_ENV
 
       - name: Install project dependencies
         run: |
