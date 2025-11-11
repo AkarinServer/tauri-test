@@ -31,29 +31,25 @@ jobs:
             # 更新系统
             apt-get update
             
-            # 安装基础工具（包括 Python，用于从源码编译 Node.js）
+            # 安装基础工具
             apt-get install -y \
               curl \
               wget \
               build-essential \
               pkg-config \
               ca-certificates \
-              gnupg \
-              python3 \
-              python3-pip \
-              make \
-              gcc \
-              g++
+              gnupg
             
-            # 安装 Node.js (使用 nvm，因为 NodeSource 不支持 RISCV64)
-            # Node.js 官方不提供 RISCV64 预编译二进制，需要从源码编译
+            # 安装 Node.js (使用非官方构建镜像，避免从源码编译)
+            # 参考: https://unofficial-builds.nodejs.org/
             export TMPDIR=/tmp
+            export NVM_NODEJS_ORG_MIRROR=https://unofficial-builds.nodejs.org/download/release
             curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
             export NVM_DIR=\"\$HOME/.nvm\"
             [ -s \"\$NVM_DIR/nvm.sh\" ] && \. \"\$NVM_DIR/nvm.sh\"
-            # 从源码编译 Node.js（这会很慢，但这是唯一的方式）
-            nvm install -s 20 || nvm install -s 18 || nvm install -s 16
-            nvm use 20 || nvm use 18 || nvm use 16
+            # 使用非官方构建镜像安装 Node.js（快速，无需编译）
+            nvm install 22 || nvm install 20 || nvm install 18
+            nvm use 22 || nvm use 20 || nvm use 18
             
             # 安装 Rust
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
