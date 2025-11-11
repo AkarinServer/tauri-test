@@ -40,18 +40,42 @@ jobs:
               ca-certificates \
               gnupg
             
-            # 安装 Node.js (使用非官方构建镜像，避免从源码编译)
+            # 安装 Node.js 22 (直接从非官方构建源下载，Node.js 没有官方 RISCV64 版本)
+            # 参考: https://github.com/nodejs/unofficial-builds/tree/main/recipes/riscv64
             # 参考: https://unofficial-builds.nodejs.org/
-            # 注意：需要与 Ubuntu 22.04 的 GLIBC 2.35 兼容
-            export TMPDIR=/tmp
-            export NVM_NODEJS_ORG_MIRROR=https://unofficial-builds.nodejs.org/download/release
-            curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
-            export NVM_DIR=\"\$HOME/.nvm\"
-            [ -s \"\$NVM_DIR/nvm.sh\" ] && \. \"\$NVM_DIR/nvm.sh\"
-            # 优先尝试安装 Node.js 18 LTS（与 GLIBC 2.35 兼容）
-            # 如果非官方构建不可用，尝试从源码编译（会很慢）
-            nvm install 18 --latest-npm || (export NVM_NODEJS_ORG_MIRROR=https://nodejs.org/dist && nvm install 18 --latest-npm) || nvm install 20 --latest-npm || nvm install 20
-            nvm use 18 || nvm use 20
+            # 参考: https://www.reddit.com/r/RISCV/comments/1nvbky2/nodejs_22_in_riscv64/
+            NODE_VERSION=\"22.11.0\"  # Node.js 22
+            NODE_ARCH=\"riscv64\"
+            NODE_DIST=\"node-v\${NODE_VERSION}-linux-\${NODE_ARCH}\"
+            NODE_URL=\"https://unofficial-builds.nodejs.org/download/release/v\${NODE_VERSION}/\${NODE_DIST}.tar.xz\"
+            
+            # 下载并安装 Node.js
+            cd /tmp
+            echo \"正在从非官方构建源下载 Node.js \${NODE_VERSION} for RISCV64...\"
+            wget -q \"\$NODE_URL\" -O \"\${NODE_DIST}.tar.xz\" || {
+              echo \"警告: 下载 Node.js \${NODE_VERSION} 失败，尝试查找可用版本...\"
+              # 如果 22.11.0 不可用，尝试其他 22.x 版本
+              NODE_VERSION=\"22.10.0\"
+              NODE_DIST=\"node-v\${NODE_VERSION}-linux-\${NODE_ARCH}\"
+              NODE_URL=\"https://unofficial-builds.nodejs.org/download/release/v\${NODE_VERSION}/\${NODE_DIST}.tar.xz\"
+              wget -q \"\$NODE_URL\" -O \"\${NODE_DIST}.tar.xz\" || {
+                echo \"错误: 无法下载 Node.js 22 for RISCV64\"
+                exit 1
+              }
+            }
+            
+            echo \"解压 Node.js...\"
+            tar -xf \"\${NODE_DIST}.tar.xz\"
+            mv \"\${NODE_DIST}\" /opt/nodejs
+            export PATH=\"/opt/nodejs/bin:\$PATH\"
+            ln -sf /opt/nodejs/bin/node /usr/local/bin/node
+            ln -sf /opt/nodejs/bin/npm /usr/local/bin/npm
+            ln -sf /opt/nodejs/bin/npx /usr/local/bin/npx
+            
+            # 验证安装
+            echo \"验证 Node.js 安装...\"
+            node --version
+            npm --version
             
             # 安装 Rust
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
