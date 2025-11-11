@@ -29,10 +29,11 @@ jobs:
             export DEBIAN_FRONTEND=noninteractive
             
             # 更新系统（添加重试机制，处理镜像同步问题）
-            apt-get update || apt-get update --fix-missing || {
+            # 简化重试逻辑，避免在 bash -c 字符串中的语法问题
+            apt-get update || {
               echo "警告: apt-get update 失败，等待 5 秒后重试..."
               sleep 5
-              apt-get update || apt-get update --fix-missing || {
+              apt-get update || {
                 echo "警告: 第二次重试失败，使用 --fix-missing 继续"
                 apt-get update --fix-missing || true
               }
@@ -51,7 +52,7 @@ jobs:
             # 参考: https://github.com/nodejs/unofficial-builds/tree/main/recipes/riscv64
             # 参考: https://unofficial-builds.nodejs.org/
             # 参考: https://www.reddit.com/r/RISCV/comments/1nvbky2/nodejs_22_in_riscv64/
-            NODE_VERSION=\"22.11.0\"  # Node.js 22
+            NODE_VERSION=\"22.21.1\"  # Node.js 22 (使用实际存在的版本)
             NODE_ARCH=\"riscv64\"
             NODE_DIST=\"node-v\${NODE_VERSION}-linux-\${NODE_ARCH}\"
             NODE_URL=\"https://unofficial-builds.nodejs.org/download/release/v\${NODE_VERSION}/\${NODE_DIST}.tar.xz\"
@@ -60,14 +61,19 @@ jobs:
             cd /tmp
             echo \"正在从非官方构建源下载 Node.js \${NODE_VERSION} for RISCV64...\"
             wget -q \"\$NODE_URL\" -O \"\${NODE_DIST}.tar.xz\" || {
-              echo \"警告: 下载 Node.js \${NODE_VERSION} 失败，尝试查找可用版本...\"
-              # 如果 22.11.0 不可用，尝试其他 22.x 版本
-              NODE_VERSION=\"22.10.0\"
+              echo \"警告: 下载 Node.js \${NODE_VERSION} 失败，尝试其他版本...\"
+              NODE_VERSION=\"22.21.0\"
               NODE_DIST=\"node-v\${NODE_VERSION}-linux-\${NODE_ARCH}\"
               NODE_URL=\"https://unofficial-builds.nodejs.org/download/release/v\${NODE_VERSION}/\${NODE_DIST}.tar.xz\"
               wget -q \"\$NODE_URL\" -O \"\${NODE_DIST}.tar.xz\" || {
-                echo \"错误: 无法下载 Node.js 22 for RISCV64\"
-                exit 1
+                echo \"警告: 22.21.0 也失败，尝试 22.20.0...\"
+                NODE_VERSION=\"22.20.0\"
+                NODE_DIST=\"node-v\${NODE_VERSION}-linux-\${NODE_ARCH}\"
+                NODE_URL=\"https://unofficial-builds.nodejs.org/download/release/v\${NODE_VERSION}/\${NODE_DIST}.tar.xz\"
+                wget -q \"\$NODE_URL\" -O \"\${NODE_DIST}.tar.xz\" || {
+                  echo \"错误: 无法下载 Node.js 22 for RISCV64\"
+                  exit 1
+                }
               }
             }
             

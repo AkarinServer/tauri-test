@@ -44,7 +44,7 @@ jobs:
             # 安装 Node.js (直接从非官方构建源下载，Node.js 没有官方 RISCV64 版本)
             # 参考: https://github.com/nodejs/unofficial-builds/tree/main/recipes/riscv64
             # 参考: https://unofficial-builds.nodejs.org/
-            NODE_VERSION="22.11.0"  # Node.js 22
+            NODE_VERSION="22.21.1"  # Node.js 22 (使用实际存在的版本)
             NODE_ARCH="riscv64"
             NODE_DIST="node-v${NODE_VERSION}-linux-${NODE_ARCH}"
             NODE_URL="https://unofficial-builds.nodejs.org/download/release/v${NODE_VERSION}/${NODE_DIST}.tar.xz"
@@ -53,12 +53,18 @@ jobs:
             cd /tmp
             wget -q "$NODE_URL" -O "${NODE_DIST}.tar.xz" || {
               echo "警告: 下载 Node.js ${NODE_VERSION} 失败，尝试其他版本..."
-              NODE_VERSION="22.10.0"
+              NODE_VERSION="22.21.0"
               NODE_DIST="node-v${NODE_VERSION}-linux-${NODE_ARCH}"
               NODE_URL="https://unofficial-builds.nodejs.org/download/release/v${NODE_VERSION}/${NODE_DIST}.tar.xz"
               wget -q "$NODE_URL" -O "${NODE_DIST}.tar.xz" || {
-                echo "错误: 无法下载 Node.js 22 for RISCV64"
-                exit 1
+                echo "警告: 22.21.0 也失败，尝试 22.20.0..."
+                NODE_VERSION="22.20.0"
+                NODE_DIST="node-v${NODE_VERSION}-linux-${NODE_ARCH}"
+                NODE_URL="https://unofficial-builds.nodejs.org/download/release/v${NODE_VERSION}/${NODE_DIST}.tar.xz"
+                wget -q "$NODE_URL" -O "${NODE_DIST}.tar.xz" || {
+                  echo "错误: 无法下载 Node.js 22 for RISCV64"
+                  exit 1
+                }
               }
             }
             
