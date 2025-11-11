@@ -11,6 +11,8 @@ jobs:
   build-riscv64-selfhosted:
     name: Build for RISCV64 Linux (Self-Hosted)
     runs-on: [self-hosted, Linux, RISCV64]
+    permissions:
+      contents: write
     
     steps:
       - name: Setup system libraries
@@ -129,6 +131,45 @@ jobs:
       - name: Build Tauri application
         run: |
           npm run tauri build -- --target riscv64gc-unknown-linux-gnu
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.version }}-riscv64
+          name: Release v${{ steps.version.outputs.version }} (RISCV64)
+          body: |
+            ## Tauri RISCV64 Build
+            
+            **Version:** ${{ steps.version.outputs.version }}
+            **Architecture:** RISCV64 (riscv64gc-unknown-linux-gnu)
+            **Build Date:** ${{ github.event.head_commit.timestamp }}
+            
+            ### Downloads
+            
+            - **DEB Package**: For Debian/Ubuntu based systems
+            - **RPM Package**: For Red Hat/Fedora based systems
+            - **Binary**: Standalone executable
+            
+            ### Notes
+            
+            - Built on self-hosted RISCV64 runner (milkv-pioneer)
+            - AppImage is not supported for RISCV64 architecture
+          files: |
+            src-tauri/target/riscv64gc-unknown-linux-gnu/release/tauri-riscv64-test
+            src-tauri/target/riscv64gc-unknown-linux-gnu/release/bundle/deb/*.deb
+            src-tauri/target/riscv64gc-unknown-linux-gnu/release/bundle/rpm/*.rpm
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
