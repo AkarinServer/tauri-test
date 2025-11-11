@@ -109,7 +109,7 @@ npm run tauri build -- --target riscv64gc-unknown-linux-gnu
 
 #### 使用 GitHub Actions CI（推荐）
 
-项目已配置 GitHub Actions workflows，可以在 CI 中自动构建：
+项目已配置 GitHub Actions workflows，可以在 CI 中自动构建 RISCV64 版本：
 
 1. **简单方案** (推荐): `.github/workflows/build-riscv64-simple.yml`
    - 使用 `uraimo/run-on-arch-action` 在 QEMU 模拟的 RISCV64 环境中构建
@@ -118,10 +118,10 @@ npm run tauri build -- --target riscv64gc-unknown-linux-gnu
 2. **Docker 方案**: `.github/workflows/build-riscv64-docker.yml`
    - 使用 Docker 容器构建
 
-3. **完整构建**: `.github/workflows/build-all.yml`
-   - 同时构建 macOS ARM64 和 RISCV64
+3. **交叉编译方案**: `.github/workflows/build-riscv64.yml`
+   - 使用 QEMU 和交叉编译工具链
 
-只需将代码推送到 GitHub，CI 会自动运行构建。
+只需将代码推送到 GitHub，CI 会自动运行 RISCV64 构建。
 
 ## 已知问题和限制
 
