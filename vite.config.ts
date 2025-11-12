@@ -10,7 +10,7 @@ export default defineConfig({
     port: 3000,
     strictPort: true,
     watch: {
-      ignored: ["**/src-tauri/**"],
+      ignored: ["**/src-tauri/**", "**/clash-verge-rev/**"],
     },
   },
   plugins: [
