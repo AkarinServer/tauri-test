@@ -157,7 +157,7 @@ jobs:
 
       - name: Build frontend
         env:
-          NODE_OPTIONS: "--jitless --max-old-space-size=2048"
+          NODE_OPTIONS: "--max-old-space-size=2048 --max-opt=2"
         run: npm run web:build
 
       - name: Build Tauri application
