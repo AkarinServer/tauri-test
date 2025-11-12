@@ -57,11 +57,24 @@ jobs:
         run: |
           # Configure persistent storage for Cargo registry to speed up builds
           # We cache the registry (dependencies) but use default target dir for builds
+          # Create directories with proper permissions
           sudo mkdir -p /opt/build-cache/cargo /opt/build-cache/node
-          sudo chown -R $USER:$USER /opt/build-cache 2>/dev/null || sudo chown -R $(whoami):$(whoami) /opt/build-cache
+          # Get the actual user (may be runneruser or different)
+          ACTUAL_USER=$(whoami)
+          ACTUAL_GROUP=$(id -gn)
+          echo "Actual user: $ACTUAL_USER, group: $ACTUAL_GROUP"
+          # Set ownership recursively
+          sudo chown -R $ACTUAL_USER:$ACTUAL_GROUP /opt/build-cache
+          # Ensure directories are writable
+          sudo chmod -R 755 /opt/build-cache
+          # Create bin directory for cargo
+          mkdir -p /opt/build-cache/cargo/bin
           echo "CARGO_HOME=/opt/build-cache/cargo" >> $GITHUB_ENV
           echo "CARGO_INCREMENTAL=1" >> $GITHUB_ENV
           # Don't set CARGO_TARGET_DIR - let Tauri use default src-tauri/target
+          # Verify permissions
+          ls -la /opt/build-cache/ || echo "Cannot list /opt/build-cache/"
+          ls -la /opt/build-cache/cargo/ || echo "Cannot list /opt/build-cache/cargo/"
 
       - name: Cache Cargo registry
         uses: actions/cache@v4
@@ -69,8 +82,10 @@ jobs:
           path: |
             /opt/build-cache/cargo/registry
             /opt/build-cache/cargo/git
+            /opt/build-cache/rustup
             ~/.cargo/registry
             ~/.cargo/git
+            ~/.rustup
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-registry-
@@ -143,35 +158,50 @@ jobs:
 
       - name: Install Rust
         run: |
-          if command -v rustc &> /dev/null; then
-            echo "Rust already installed: $(rustc --version)"
-          else
-            echo "Installing Rust..."
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-            source $HOME/.cargo/env
-            rustup target add riscv64gc-unknown-linux-gnu
-            echo "Rust installed: $(rustc --version)"
-          fi
-          
-          # Ensure cargo is available in subsequent steps
-          # Note: We use persistent storage for registry cache, but keep default target dir
-          # This allows Tauri to build to src-tauri/target while caching dependencies
-          if [ -n "$CARGO_HOME" ]; then
-            echo "Using persistent Cargo registry: $CARGO_HOME"
-            # Copy cargo binary if needed
-            if [ ! -f "$CARGO_HOME/bin/cargo" ] && [ -f "$HOME/.cargo/bin/cargo" ]; then
-              mkdir -p "$CARGO_HOME/bin"
-              cp "$HOME/.cargo/bin/cargo" "$CARGO_HOME/bin/" 2>/dev/null || true
-            fi
-            # Set PATH to use persistent cargo if available
-            if [ -f "$CARGO_HOME/bin/cargo" ]; then
+          # Check if Rust is already installed in persistent storage
+          if [ -n "$CARGO_HOME" ] && [ -f "$CARGO_HOME/bin/rustc" ]; then
+            echo "Rust already installed in persistent storage: $($CARGO_HOME/bin/rustc --version)"
+            echo "PATH=$CARGO_HOME/bin:$PATH" >> $GITHUB_ENV
+          elif command -v rustc &> /dev/null; then
+            echo "Rust already installed in default location: $(rustc --version)"
+            # If using persistent storage, copy Rust installation
+            if [ -n "$CARGO_HOME" ] && [ -d "$HOME/.cargo" ]; then
+              echo "Copying Rust installation to persistent storage..."
+              mkdir -p "$CARGO_HOME"
+              cp -r "$HOME/.cargo/bin" "$CARGO_HOME/" 2>/dev/null || true
+              cp -r "$HOME/.rustup" "$CARGO_HOME/../rustup" 2>/dev/null || true
               echo "PATH=$CARGO_HOME/bin:$HOME/.cargo/bin:$PATH" >> $GITHUB_ENV
             else
               echo "PATH=$HOME/.cargo/bin:$PATH" >> $GITHUB_ENV
             fi
           else
-            echo "CARGO_HOME=$HOME/.cargo" >> $GITHUB_ENV
-            echo "PATH=$HOME/.cargo/bin:$PATH" >> $GITHUB_ENV
+            echo "Installing Rust..."
+            # Install Rust to persistent storage if configured
+            if [ -n "$CARGO_HOME" ]; then
+              echo "Installing Rust to persistent storage: $CARGO_HOME"
+              # Set RUSTUP_HOME to persistent location
+              export RUSTUP_HOME="/opt/build-cache/rustup"
+              export CARGO_HOME="$CARGO_HOME"
+              sudo mkdir -p "$RUSTUP_HOME"
+              sudo chown -R $(whoami):$(id -gn) "$RUSTUP_HOME"
+              sudo chown -R $(whoami):$(id -gn) "$CARGO_HOME"
+              # Install Rust
+              curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --no-modify-path
+              # Source cargo env
+              source "$CARGO_HOME/env"
+              echo "RUSTUP_HOME=$RUSTUP_HOME" >> $GITHUB_ENV
+              echo "CARGO_HOME=$CARGO_HOME" >> $GITHUB_ENV
+              echo "PATH=$CARGO_HOME/bin:$PATH" >> $GITHUB_ENV
+            else
+              # Install to default location
+              curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+              source $HOME/.cargo/env
+              echo "CARGO_HOME=$HOME/.cargo" >> $GITHUB_ENV
+              echo "PATH=$HOME/.cargo/bin:$PATH" >> $GITHUB_ENV
+            fi
+            # Add RISC-V target
+            rustup target add riscv64gc-unknown-linux-gnu
+            echo "Rust installed: $(rustc --version)"
           fi
           
           # Don't set CARGO_TARGET_DIR to allow Tauri to use default location
