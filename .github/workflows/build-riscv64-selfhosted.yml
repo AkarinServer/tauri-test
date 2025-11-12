@@ -169,7 +169,10 @@ jobs:
           node --max-opt=2 node_modules/.bin/vite build
 
       - name: Build Tauri application
-        run: npm run tauri build -- --target riscv64gc-unknown-linux-gnu
+        run: |
+          # Build Tauri app with only deb and rpm bundles (skip appimage for RISC-V)
+          # AppImage doesn't support RISC-V architecture
+          npm run tauri build -- --target riscv64gc-unknown-linux-gnu --bundles deb,rpm
 
       - name: Get version
         id: version

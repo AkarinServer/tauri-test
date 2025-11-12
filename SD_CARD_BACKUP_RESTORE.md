@@ -166,3 +166,4 @@ $ sudo ./restore-sd-card.sh ~/backups/lichee-rv-dock/lichee-rv-dock-minimal-*.im
 - `restore-sd-card.sh` - 恢复脚本
 - `check_ext4_usage.py` - 文件系统使用情况检查脚本
 
+
