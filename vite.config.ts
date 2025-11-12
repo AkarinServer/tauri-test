@@ -49,6 +49,7 @@ const reactPlugin = getReactPlugin();
 
 export default defineConfig({
   root: "src",
+  base: "./", // Use relative paths for Tauri asset protocol
   server: {
     port: 5173,
     strictPort: true,
@@ -79,6 +80,7 @@ export default defineConfig({
     sourcemap: false,
     cssCodeSplit: true,
     cssMinify: true,
+    assetsDir: "assets",
     rollupOptions: {
       treeshake: {
         preset: "recommended",
@@ -89,6 +91,10 @@ export default defineConfig({
         compact: true,
         experimentalMinChunkSize: 50000,
         dynamicImportInCjs: true,
+        // Use relative paths for Tauri asset protocol
+        assetFileNames: "assets/[name].[hash].[ext]",
+        chunkFileNames: "assets/[name].[hash].js",
+        entryFileNames: "assets/[name].[hash].js",
         manualChunks(id) {
           if (id.includes("node_modules")) {
             // React core libraries
