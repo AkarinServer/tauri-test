@@ -79,40 +79,91 @@ log_info "Copying GPT partition entries (16KB)..."
 dd if="$IMAGE_FILE" of="$DEVICE" bs=512 skip=2 seek=2 count=32 2>&1 | grep -v "records" || true
 sync
 
-log_step "Step 5: Copying GPT backup header..."
+log_step "Step 5: Copying GPT backup..."
 # GPT backup is at the end of the disk
-# Calculate backup location: last sector of device
+# Calculate backup location: last 33 sectors of device (32 for partition table + 1 for header)
 DEVICE_SECTORS=$((DEVICE_SIZE / 512))
-BACKUP_SECTOR=$((DEVICE_SECTORS - 1))
+BACKUP_START_SECTOR=$((DEVICE_SECTORS - 33))
 
-log_info "GPT backup should be at sector $BACKUP_SECTOR"
-log_info "Copying GPT backup header from end of image..."
+log_info "Device has $DEVICE_SECTORS sectors"
+log_info "GPT backup should start at sector $BACKUP_START_SECTOR (last 33 sectors)"
 
 # Try to get backup from image (if image has it)
 IMAGE_SECTORS=$((IMAGE_SIZE / 512))
 if [ $IMAGE_SECTORS -gt 34 ]; then
-    IMAGE_BACKUP_SECTOR=$((IMAGE_SECTORS - 1))
-    log_info "Image has $IMAGE_SECTORS sectors, backup at sector $IMAGE_BACKUP_SECTOR"
-    dd if="$IMAGE_FILE" of="$DEVICE" bs=512 skip=$IMAGE_BACKUP_SECTOR seek=$BACKUP_SECTOR count=1 2>&1 | grep -v "records" || true
+    IMAGE_BACKUP_START=$((IMAGE_SECTORS - 33))
+    log_info "Image has $IMAGE_SECTORS sectors, backup starts at sector $IMAGE_BACKUP_START"
+    log_info "Copying GPT backup (33 sectors: partition table + header)..."
+    
+    # Copy the backup partition table (32 sectors)
+    dd if="$IMAGE_FILE" of="$DEVICE" bs=512 skip=$IMAGE_BACKUP_START seek=$BACKUP_START_SECTOR count=32 2>&1 | grep -v "records" || {
+        log_warn "Failed to copy backup partition table, trying header only..."
+        # Try just the header
+        IMAGE_BACKUP_HEADER=$((IMAGE_SECTORS - 1))
+        DEVICE_BACKUP_HEADER=$((DEVICE_SECTORS - 1))
+        dd if="$IMAGE_FILE" of="$DEVICE" bs=512 skip=$IMAGE_BACKUP_HEADER seek=$DEVICE_BACKUP_HEADER count=1 2>&1 | grep -v "records" || true
+    }
     sync
 else
-    log_warn "Image is too small to contain GPT backup, skipping backup copy"
+    log_warn "Image is too small to contain GPT backup"
+    log_warn "Will try to create backup from primary GPT..."
+    
+    # Copy primary GPT to backup location
+    log_info "Copying primary GPT to backup location..."
+    dd if="$DEVICE" of="$DEVICE" bs=512 skip=2 seek=$BACKUP_START_SECTOR count=32 2>&1 | grep -v "records" || true
+    dd if="$DEVICE" of="$DEVICE" bs=512 skip=1 seek=$((DEVICE_SECTORS - 1)) count=1 2>&1 | grep -v "records" || true
+    sync
 fi
 
-log_step "Step 6: Verifying GPT..."
-sleep 2
+log_step "Step 6: Fixing GPT checksums..."
+# GPT headers have checksums that need to be recalculated
+# We can't easily fix this with dd, but we can try gpt recover if it works
+log_info "Attempting to fix GPT checksums..."
 
-if gpt show "$DISK_DEVICE" >/dev/null 2>&1; then
-    log_info "✓ GPT partition table is now readable!"
-    log_info ""
-    log_info "Partition table:"
-    gpt show "$DISK_DEVICE" | grep "GPT part" || log_warn "No partitions found"
+# Try to use gdisk or gpt recover (may be blocked by SIP)
+if command -v gdisk >/dev/null 2>&1; then
+    log_info "Found gdisk, attempting to verify/fix GPT..."
+    echo "v" | gdisk "$DISK_DEVICE" 2>&1 | head -20 || true
+    echo "w" | gdisk "$DISK_DEVICE" 2>&1 | head -10 || true
+elif gpt recover "$DISK_DEVICE" 2>/dev/null; then
+    log_info "GPT recover succeeded"
 else
-    log_warn "GPT still not readable, but headers have been copied"
-    log_warn "You may need to:"
-    log_warn "  1. Physically remove and reinsert the SD card"
-    log_warn "  2. Or use a Linux system to fix the GPT"
+    log_warn "Cannot fix GPT checksums automatically (may be blocked by SIP)"
+    log_warn "The GPT structure is copied but checksums may be invalid"
 fi
+
+log_step "Step 7: Verifying GPT..."
+sleep 3
+
+# Try multiple times as device may need time to update
+for attempt in 1 2 3; do
+    if gpt show "$DISK_DEVICE" >/dev/null 2>&1; then
+        log_info "✓ GPT partition table is now readable!"
+        log_info ""
+        log_info "Partition table:"
+        gpt show "$DISK_DEVICE" | grep "GPT part" || log_warn "No partitions found"
+        break
+    else
+        if [ $attempt -lt 3 ]; then
+            log_warn "GPT not readable yet (attempt $attempt), waiting..."
+            sleep 2
+            diskutil unmountDisk "$DISK_DEVICE" 2>/dev/null || true
+            sleep 1
+        else
+            log_warn "GPT still not readable after copying headers"
+            log_warn ""
+            log_warn "The GPT headers have been copied, but checksums may be invalid."
+            log_warn "This is likely due to macOS SIP restrictions preventing checksum fixes."
+            log_warn ""
+            log_warn "Next steps:"
+            log_warn "  1. Physically remove and reinsert the SD card"
+            log_warn "  2. Try: sudo gpt recover /dev/disk7 (may still be blocked)"
+            log_warn "  3. Or use a Linux system to fix:"
+            log_warn "     sudo gdisk /dev/sdX"
+            log_warn "     (then: r -> d -> w -> y)"
+        fi
+    fi
+done
 
 log_info ""
 log_info "=== Done ==="

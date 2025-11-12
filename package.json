@@ -12,7 +12,7 @@
     "build:macos": "cross-env NODE_OPTIONS='--max-old-space-size=2048' tauri build -- --target aarch64-apple-darwin",
     "tauri": "tauri",
     "web:dev": "vite",
-    "web:build": "tsc --noEmit && vite build",
+    "web:build": "tsc --noEmit && NODE_OPTIONS='--no-opt --jitless' vite build",
     "web:serve": "vite preview",
     "prebuild": "node scripts/prebuild.mjs",
     "fmt": "cargo fmt --manifest-path ./src-tauri/Cargo.toml",
