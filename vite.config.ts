@@ -97,19 +97,25 @@ export default defineConfig({
         entryFileNames: "assets/[name].[hash].js",
         manualChunks(id) {
           if (id.includes("node_modules")) {
-            // React core libraries
+            // React core libraries - MUST be checked first to avoid circular dependencies
             if (
-              id.includes("react") ||
-              id.includes("react-dom") ||
-              id.includes("react-router")
+              id.includes("/react/") ||
+              id.includes("/react-dom/") ||
+              id.includes("/react-router/") ||
+              id.includes("/react-error-boundary/") ||
+              id.includes("/react-hook-form/") ||
+              id.includes("/react-i18next/")
             ) {
               return "react-core";
             }
 
             // Material UI libraries (grouped together)
+            // Note: @emotion/react and @emotion/styled depend on React, so they should be in mui chunk
             if (
               id.includes("@mui/material") ||
-              id.includes("@mui/icons-material")
+              id.includes("@mui/icons-material") ||
+              id.includes("@emotion/react") ||
+              id.includes("@emotion/styled")
             ) {
               return "mui";
             }
@@ -128,7 +134,12 @@ export default defineConfig({
               id.includes("lodash-es") ||
               id.includes("dayjs") ||
               id.includes("js-yaml") ||
-              id.includes("nanoid")
+              id.includes("nanoid") ||
+              id.includes("i18next") ||
+              id.includes("swr") ||
+              id.includes("ahooks") ||
+              id.includes("foxact") ||
+              id.includes("@juggle/resize-observer")
             ) {
               return "utils";
             }
