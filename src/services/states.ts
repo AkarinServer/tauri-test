@@ -4,9 +4,11 @@ const [ThemeModeProvider, useThemeMode, useSetThemeMode] = createContextState<
   "light" | "dark"
 >("light");
 
+// save the state of each profile item loading
 const [LoadingCacheProvider, useLoadingCache, useSetLoadingCache] =
   createContextState<Record<string, boolean>>({});
 
+// save update state
 const [UpdateStateProvider, useUpdateState, useSetUpdateState] =
   createContextState<boolean>(false);
 
@@ -21,4 +23,3 @@ export {
   useUpdateState,
   useSetUpdateState,
 };
-

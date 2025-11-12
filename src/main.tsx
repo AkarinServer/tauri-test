@@ -23,6 +23,9 @@ import "./polyfills/matchMedia.js";
 import "./polyfills/WeakRef.js";
 import "./polyfills/RegExp.js";
 
+// Styles
+import "./styles/base.css";
+
 // ResizeObserver polyfill
 if (!window.ResizeObserver) {
   window.ResizeObserver = ResizeObserver;
@@ -52,31 +55,52 @@ document.addEventListener("keydown", (event) => {
 });
 
 const initializeApp = () => {
-  const contexts = [
-    <ThemeModeProvider key="theme" />,
-    <LoadingCacheProvider key="loading" />,
-    <UpdateStateProvider key="update" />,
-  ];
+  try {
+    console.log("[main.tsx] Initializing app...");
+    const contexts = [
+      <ThemeModeProvider key="theme" />,
+      <LoadingCacheProvider key="loading" />,
+      <UpdateStateProvider key="update" />,
+    ];
 
-  const root = createRoot(container);
-  root.render(
-    <React.StrictMode>
-      <ComposeContextProvider contexts={contexts}>
-        <BaseErrorBoundary>
-          <WindowProvider>
-            <AppDataProvider>
-              <RouterProvider router={router} />
-            </AppDataProvider>
-          </WindowProvider>
-        </BaseErrorBoundary>
-      </ComposeContextProvider>
-    </React.StrictMode>,
-  );
+    const root = createRoot(container);
+    root.render(
+      <React.StrictMode>
+        <ComposeContextProvider contexts={contexts}>
+          <BaseErrorBoundary>
+            <WindowProvider>
+              <AppDataProvider>
+                <RouterProvider router={router} />
+              </AppDataProvider>
+            </WindowProvider>
+          </BaseErrorBoundary>
+        </ComposeContextProvider>
+      </React.StrictMode>,
+    );
+    console.log("[main.tsx] App initialized successfully");
+  } catch (error) {
+    console.error("[main.tsx] Failed to initialize app:", error);
+    // Show error in UI
+    container.innerHTML = `
+      <div style="padding: 20px; font-family: monospace;">
+        <h2>Application Initialization Error</h2>
+        <pre>${error instanceof Error ? error.stack : String(error)}</pre>
+      </div>
+    `;
+  }
 };
 
 // Initialize language (default to Chinese)
-initializeLanguage("zh").catch(console.error);
-initializeApp();
+initializeLanguage("zh")
+  .then(() => {
+    console.log("[main.tsx] Language initialized successfully");
+    initializeApp();
+  })
+  .catch((error) => {
+    console.error("[main.tsx] Failed to initialize language:", error);
+    // Still initialize app even if language fails
+    initializeApp();
+  });
 
 // Error handling
 window.addEventListener("error", (event) => {

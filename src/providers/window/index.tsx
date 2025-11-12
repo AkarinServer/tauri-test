@@ -1,24 +1,98 @@
-import { createContext, useContext, ReactNode } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
-interface WindowContextType {
-  // Placeholder - will be implemented later
-}
+import debounce from "@/utils/debounce";
 
-const WindowContext = createContext<WindowContextType | undefined>(undefined);
+import { WindowContext, WindowContextType } from "./WindowContext";
 
-export const useWindow = () => {
-  const context = useContext(WindowContext);
-  if (!context) {
-    throw new Error("useWindow must be used within WindowProvider");
-  }
-  return context;
-};
+export const WindowProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
+  const currentWindow = useMemo(() => getCurrentWindow(), []);
+  const [decorated, setDecorated] = useState<boolean | null>(null);
+  const [maximized, setMaximized] = useState<boolean | null>(null);
 
-export const WindowProvider = ({ children }: { children: ReactNode }) => {
-  const value: WindowContextType = {};
+  const close = useCallback(() => currentWindow.close(), [currentWindow]);
+  const minimize = useCallback(() => currentWindow.minimize(), [currentWindow]);
+
+  useEffect(() => {
+    let isUnmounted = false;
+
+    const checkMaximized = debounce(async () => {
+      if (!isUnmounted) {
+        const value = await currentWindow.isMaximized();
+        setMaximized(value);
+      }
+    }, 300);
+
+    const unlistenPromise = currentWindow.onResized(checkMaximized);
+
+    return () => {
+      isUnmounted = true;
+      unlistenPromise
+        .then((unlisten) => unlisten())
+        .catch((err) => console.warn("[WindowProvider] 清理监听器失败:", err));
+    };
+  }, [currentWindow]);
+
+  const toggleMaximize = useCallback(async () => {
+    if (await currentWindow.isMaximized()) {
+      await currentWindow.unmaximize();
+      setMaximized(false);
+    } else {
+      await currentWindow.maximize();
+      setMaximized(true);
+    }
+  }, [currentWindow]);
+
+  const toggleFullscreen = useCallback(async () => {
+    await currentWindow.setFullscreen(!(await currentWindow.isFullscreen()));
+  }, [currentWindow]);
+
+  const refreshDecorated = useCallback(async () => {
+    const val = await currentWindow.isDecorated();
+    setDecorated(val);
+    return val;
+  }, [currentWindow]);
+
+  const toggleDecorations = useCallback(async () => {
+    const currentVal = await currentWindow.isDecorated();
+    await currentWindow.setDecorations(!currentVal);
+    setDecorated(!currentVal);
+  }, [currentWindow]);
+
+  useEffect(() => {
+    refreshDecorated();
+  }, [currentWindow, refreshDecorated]);
+
+  const contextValue = useMemo<WindowContextType>(
+    () => ({
+      decorated,
+      maximized,
+      toggleDecorations,
+      refreshDecorated,
+      minimize,
+      close,
+      toggleMaximize,
+      toggleFullscreen,
+      currentWindow,
+    }),
+    [
+      decorated,
+      maximized,
+      toggleDecorations,
+      refreshDecorated,
+      minimize,
+      close,
+      toggleMaximize,
+      toggleFullscreen,
+      currentWindow,
+    ],
+  );
 
   return (
-    <WindowContext.Provider value={value}>{children}</WindowContext.Provider>
+    <WindowContext.Provider value={contextValue}>
+      {children}
+    </WindowContext.Provider>
   );
 };
-

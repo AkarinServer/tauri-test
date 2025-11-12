@@ -1,18 +1,60 @@
-import { Box, Typography } from "@mui/material";
+import { RouterOutlined, AccountTreeOutlined, InfoOutlined } from "@mui/icons-material";
+import { Grid } from "@mui/material";
+import { useTranslation } from "react-i18next";
+
+import { BasePage } from "@/components/base";
+import { ClashModeCard } from "@/components/home/clash-mode-card";
+import { CurrentProxyCard } from "@/components/home/current-proxy-card";
+import { EnhancedCard } from "@/components/home/enhanced-card";
+import { SystemInfoCard } from "@/components/home/system-info-card";
 
 const HomePage = () => {
+  const { t, ready } = useTranslation();
+
+  // Show loading state if i18n is not ready
+  if (!ready) {
+    return (
+      <BasePage title="加载中..." contentStyle={{ padding: 2 }}>
+        <div>正在加载...</div>
+      </BasePage>
+    );
+  }
+
   return (
-    <Box sx={{ padding: 3 }}>
-      <Typography variant="h4">RV Verge</Typography>
-      <Typography variant="body1" sx={{ marginTop: 2 }}>
-        Clash Verge Rev - Lightweight version for RISC-V devices
-      </Typography>
-      <Typography variant="body2" sx={{ marginTop: 2, color: "text.secondary" }}>
-        This is a minimal version to test if the application can run on RISC-V devices.
-      </Typography>
-    </Box>
+    <BasePage title={t("home.page.title")} contentStyle={{ padding: 2 }}>
+      <Grid container spacing={1.5} columns={{ xs: 6, sm: 6, md: 12 }}>
+        <Grid size={6}>
+          <EnhancedCard
+            title={t("home.page.cards.proxyMode")}
+            icon={<RouterOutlined />}
+            iconColor="info"
+          >
+            <ClashModeCard />
+          </EnhancedCard>
+        </Grid>
+
+        <Grid size={6}>
+          <EnhancedCard
+            title={t("home.components.currentProxy.title")}
+            icon={<AccountTreeOutlined />}
+            iconColor="primary"
+          >
+            <CurrentProxyCard />
+          </EnhancedCard>
+        </Grid>
+
+        <Grid size={6}>
+          <EnhancedCard
+            title={t("home.components.systemInfo.title")}
+            icon={<InfoOutlined />}
+            iconColor="secondary"
+          >
+            <SystemInfoCard />
+          </EnhancedCard>
+        </Grid>
+      </Grid>
+    </BasePage>
   );
 };
 
 export default HomePage;
-

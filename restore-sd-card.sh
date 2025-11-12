@@ -1,14 +1,15 @@
 #!/bin/bash
-# Restore script for SD card backup
-# Usage: ./restore-sd-card.sh [backup-file] [target-device]
+# Restore SD card image script
+# Automatically detects image size and target SD card size
+# Adjusts partition sizes to fit the target SD card
+# Usage: sudo ./restore-sd-card.sh <image-file> <target-device>
 
 set -e
 
 # Configuration
-BACKUP_FILE="${1}"
+IMAGE_FILE="${1}"
 TARGET_DEVICE="${2}"
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-LOG_FILE="$HOME/backups/lichee-rv-dock/restore-${TIMESTAMP}.log"
+TEMP_DIR="/tmp/sd_restore_$$"
 
 # Colors for output
 RED='\033[0;31m'
@@ -19,16 +20,33 @@ NC='\033[0m' # No Color
 
 # Functions
 log_info() {
-    echo -e "${GREEN}[INFO]${NC} $1" | tee -a "$LOG_FILE"
+    echo -e "${GREEN}[INFO]${NC} $1"
 }
 
 log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1" | tee -a "$LOG_FILE"
+    echo -e "${YELLOW}[WARN]${NC} $1"
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} $1" | tee -a "$LOG_FILE"
+    echo -e "${RED}[ERROR]${NC} $1"
 }
+
+log_step() {
+    echo -e "${BLUE}[STEP]${NC} $1"
+}
+
+# Cleanup function
+cleanup() {
+    if [ -d "$TEMP_DIR" ]; then
+        log_info "Cleaning up temporary files..."
+        rm -rf "$TEMP_DIR"
+    fi
+    # Remount target device if possible
+    if [ -n "$TARGET_DISK" ]; then
+        diskutil mountDisk "$TARGET_DISK" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
 
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then 
@@ -37,123 +55,449 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Check arguments
-if [ -z "$BACKUP_FILE" ] || [ -z "$TARGET_DEVICE" ]; then
-    log_error "Usage: $0 <backup-file> <target-device>"
-    log_info "Example: $0 ~/backups/lichee-rv-dock/lichee-rv-dock-backup-20240101-120000.img.gz /dev/rdisk7"
+if [ -z "$IMAGE_FILE" ] || [ -z "$TARGET_DEVICE" ]; then
+    log_error "Usage: sudo $0 <image-file> <target-device>"
+    log_error "Example: sudo $0 ~/backups/lichee-rv-dock/lichee-rv-dock-minimal-*.img.gz /dev/rdisk8"
     exit 1
 fi
 
-# Check if backup file exists
-if [ ! -f "$BACKUP_FILE" ]; then
-    log_error "Backup file not found: $BACKUP_FILE"
+# Check if image file exists
+if [ ! -f "$IMAGE_FILE" ]; then
+    log_error "Image file not found: $IMAGE_FILE"
     exit 1
 fi
+
+# Convert raw device to regular device
+TARGET_DISK=$(echo "$TARGET_DEVICE" | sed 's/rdisk/disk/')
 
 # Check if target device exists
 if [ ! -b "$TARGET_DEVICE" ] && [ ! -c "$TARGET_DEVICE" ]; then
-    log_error "Target device not found: $TARGET_DEVICE"
+    log_error "Target device $TARGET_DEVICE not found!"
     log_info "Available disks:"
     diskutil list | grep -E "^/dev/disk" | head -10
     exit 1
 fi
 
-log_info "=== SD Card Restore Script ==="
-log_info "Backup file: $BACKUP_FILE"
-log_info "Target device: $TARGET_DEVICE"
+log_info "=== SD Card Restore ==="
+log_info "Image file: $IMAGE_FILE"
+log_info "Target device: $TARGET_DEVICE (disk: $TARGET_DISK)"
 
-# Get backup file size
-BACKUP_SIZE=$(ls -lh "$BACKUP_FILE" | awk '{print $5}')
-BACKUP_SIZE_BYTES=$(stat -f%z "$BACKUP_FILE" 2>/dev/null || stat -c%s "$BACKUP_FILE" 2>/dev/null)
-log_info "Backup file size: $BACKUP_SIZE"
-
-# Get target device size
-TARGET_SIZE_STR=$(diskutil info $(echo $TARGET_DEVICE | sed 's/rdisk/disk/') | grep "Disk Size:" | awk '{for(i=3;i<=NF;i++) printf "%s ", $i; print ""}')
-TARGET_SIZE_BYTES=$(diskutil info $(echo $TARGET_DEVICE | sed 's/rdisk/disk/') | grep "Total Size:" | awk '{print $5 $6}' | tr -d '()' || echo "0")
-
-log_info "Target device size: $TARGET_SIZE_STR"
-
-# Verify checksum if exists
-CHECKSUM_FILE="${BACKUP_FILE}.sha256"
-if [ -f "$CHECKSUM_FILE" ]; then
-    log_info "Verifying backup checksum..."
-    if shasum -a 256 -c "$CHECKSUM_FILE" > /dev/null 2>&1; then
-        log_info "✓ Checksum verified successfully"
+# Step 1: Check image file
+log_step "Step 1: Checking image file..."
+if [[ "$IMAGE_FILE" == *.gz ]]; then
+    IS_COMPRESSED=true
+    log_info "Image is compressed (.gz)"
+    
+    # Get compressed size
+    COMPRESSED_SIZE=$(stat -f%z "$IMAGE_FILE" 2>/dev/null || stat -c%s "$IMAGE_FILE" 2>/dev/null)
+    COMPRESSED_SIZE_GB=$(echo "scale=2; $COMPRESSED_SIZE / 1024 / 1024 / 1024" | bc)
+    log_info "Compressed size: ${COMPRESSED_SIZE_GB} GB"
+    
+    # Estimate uncompressed size (gzip typically compresses to 80-90% for sparse data)
+    ESTIMATED_SIZE=$(gunzip -l "$IMAGE_FILE" 2>/dev/null | tail -1 | awk '{print $2}')
+    if [ -n "$ESTIMATED_SIZE" ] && [ "$ESTIMATED_SIZE" != "0" ]; then
+        IMAGE_SIZE=$ESTIMATED_SIZE
+        IMAGE_SIZE_GB=$(echo "scale=2; $IMAGE_SIZE / 1024 / 1024 / 1024" | bc)
+        log_info "Uncompressed size: ${IMAGE_SIZE_GB} GB"
     else
-        log_error "✗ Checksum verification failed!"
-        read -p "Continue anyway? (y/N) " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            exit 1
-        fi
+        # Fallback: estimate based on compression ratio
+        IMAGE_SIZE=$((COMPRESSED_SIZE * 12 / 10))  # Estimate 1.2x compression
+        IMAGE_SIZE_GB=$(echo "scale=2; $IMAGE_SIZE / 1024 / 1024 / 1024" | bc)
+        log_warn "Could not determine uncompressed size, estimating: ${IMAGE_SIZE_GB} GB"
     fi
 else
-    log_warn "No checksum file found. Skipping verification."
+    IS_COMPRESSED=false
+    IMAGE_SIZE=$(stat -f%z "$IMAGE_FILE" 2>/dev/null || stat -c%s "$IMAGE_FILE" 2>/dev/null)
+    IMAGE_SIZE_GB=$(echo "scale=2; $IMAGE_SIZE / 1024 / 1024 / 1024" | bc)
+    log_info "Image size: ${IMAGE_SIZE_GB} GB"
 fi
 
-# Estimate decompressed size (rough estimate: compressed images are typically 2-3x smaller)
-# For gzip, we can't know exact size without decompressing, so we'll monitor during restore
-log_warn "WARNING: This will overwrite all data on $TARGET_DEVICE"
-log_info "Make sure you have selected the correct device!"
+# Step 2: Check target SD card size
+log_step "Step 2: Checking target SD card size..."
+TARGET_INFO=$(diskutil info "$TARGET_DISK" 2>/dev/null)
+TARGET_SIZE=$(echo "$TARGET_INFO" | grep -i "disk size" | awk -F': ' '{print $2}' | awk '{print $1}')
+TARGET_SIZE_BYTES=$(echo "$TARGET_INFO" | grep -i "disk size" | grep -oE "[0-9]+" | head -1)
+
+if [ -z "$TARGET_SIZE_BYTES" ]; then
+    # Try alternative method
+    TARGET_SIZE_BYTES=$(diskutil info "$TARGET_DISK" 2>/dev/null | grep -i "total size" | grep -oE "[0-9]+" | head -1)
+fi
+
+if [ -z "$TARGET_SIZE_BYTES" ]; then
+    log_error "Could not determine target SD card size"
+    exit 1
+fi
+
+# Convert to bytes if it's in a different format
+if [ ${#TARGET_SIZE_BYTES} -lt 10 ]; then
+    # Likely in GB, convert to bytes
+    TARGET_SIZE_BYTES=$(echo "$TARGET_SIZE_BYTES * 1024 * 1024 * 1024" | bc | awk '{print int($1)}')
+fi
+
+TARGET_SIZE_GB=$(echo "scale=2; $TARGET_SIZE_BYTES / 1024 / 1024 / 1024" | bc)
+log_info "Target SD card size: ${TARGET_SIZE_GB} GB"
+
+# Check if target is large enough
+if [ "$IMAGE_SIZE" -gt "$TARGET_SIZE_BYTES" ]; then
+    log_error "Image size (${IMAGE_SIZE_GB} GB) is larger than target SD card (${TARGET_SIZE_GB} GB)"
+    log_error "Please use a larger SD card"
+    exit 1
+fi
+
+log_info "✓ Target SD card is large enough"
+
+# Step 3: Check partition info file
+log_step "Step 3: Loading partition information..."
+PARTITION_INFO_FILE="${IMAGE_FILE}.partitions"
+
+if [ -f "$PARTITION_INFO_FILE" ]; then
+    log_info "Found partition info file: $PARTITION_INFO_FILE"
+    source "$PARTITION_INFO_FILE"
+    log_info "Main partition: index=$MAIN_PARTITION_INDEX, start=$MAIN_PARTITION_START sectors, size=${MAIN_PARTITION_SIZE:-0} sectors"
+else
+    log_warn "Partition info file not found: $PARTITION_INFO_FILE"
+    log_warn "Will attempt to read partition table from image after extraction"
+    MAIN_PARTITION_INDEX=1
+    MAIN_PARTITION_START=0
+    MAIN_PARTITION_SIZE=0
+fi
+
+# Ensure MAIN_PARTITION_SIZE is set
+MAIN_PARTITION_SIZE=${MAIN_PARTITION_SIZE:-0}
+
+# Step 4: Create temporary directory
+log_step "Step 4: Creating temporary directory..."
+mkdir -p "$TEMP_DIR"
+UNCOMPRESSED_IMAGE="$TEMP_DIR/image.img"
+
+# Step 5: Decompress image if needed
+if [ "$IS_COMPRESSED" = true ]; then
+    log_step "Step 5: Decompressing image..."
+    log_info "This may take a while..."
+    
+    if command -v pv &> /dev/null; then
+        COMPRESSED_SIZE_MB=$((COMPRESSED_SIZE / 1024 / 1024))
+        pv -s "${COMPRESSED_SIZE_MB}M" "$IMAGE_FILE" | gunzip -c > "$UNCOMPRESSED_IMAGE"
+    else
+        gunzip -c "$IMAGE_FILE" > "$UNCOMPRESSED_IMAGE"
+    fi
+    
+    ACTUAL_UNCOMPRESSED_SIZE=$(stat -f%z "$UNCOMPRESSED_IMAGE" 2>/dev/null || stat -c%s "$UNCOMPRESSED_IMAGE" 2>/dev/null)
+    ACTUAL_UNCOMPRESSED_SIZE_GB=$(echo "scale=2; $ACTUAL_UNCOMPRESSED_SIZE / 1024 / 1024 / 1024" | bc)
+    log_info "Decompressed image size: ${ACTUAL_UNCOMPRESSED_SIZE_GB} GB"
+    IMAGE_SIZE=$ACTUAL_UNCOMPRESSED_SIZE
+else
+    log_step "Step 5: Copying image..."
+    cp "$IMAGE_FILE" "$UNCOMPRESSED_IMAGE"
+fi
+
+# Step 6: Confirm before proceeding
 log_info ""
-read -p "Type 'YES' to confirm: " CONFIRM
-if [ "$CONFIRM" != "YES" ]; then
+log_warn "=== Restore Summary ==="
+log_info "Image file: $IMAGE_FILE"
+log_info "Image size: $(echo "scale=2; $IMAGE_SIZE / 1024 / 1024 / 1024" | bc) GB"
+log_info "Target device: $TARGET_DEVICE"
+log_info "Target size: ${TARGET_SIZE_GB} GB"
+log_info ""
+log_warn "WARNING: This will erase all data on $TARGET_DEVICE!"
+log_info ""
+read -p "Continue with restore? (yes/no) " -r
+if [[ ! $REPLY =~ ^[Yy][Ee][Ss]$ ]]; then
     log_info "Restore cancelled"
     exit 0
 fi
 
-# Unmount the device if mounted
-log_info "Unmounting target device..."
-diskutil unmountDisk $(echo $TARGET_DEVICE | sed 's/rdisk/disk/') 2>/dev/null || true
-
-# Check if pv is installed
-if command -v pv &> /dev/null; then
-    HAS_PV=true
-    log_info "pv is installed, will show progress"
+# Step 7: Unmount target device
+log_step "Step 7: Unmounting target device..."
+if diskutil unmountDisk "$TARGET_DISK" 2>/dev/null; then
+    log_info "Target device unmounted successfully"
 else
-    HAS_PV=false
-    log_warn "pv is not installed. Install with: brew install pv"
+    log_warn "Target device may already be unmounted"
 fi
 
-# Start restore
-log_info "Starting restore at $(date)"
+# Step 8: Write image to target device
+log_step "Step 8: Writing image to target device..."
 log_info "This may take a while, please be patient..."
+
 START_TIME=$(date +%s)
 
-if [ "$HAS_PV" = true ]; then
-    # Restore with progress bar
-    gunzip -c "$BACKUP_FILE" | \
-        pv | \
-        sudo dd of="$TARGET_DEVICE" bs=4m 2>&1 | tee -a "$LOG_FILE"
+IMAGE_SIZE_MB=$((IMAGE_SIZE / 1024 / 1024))
+BS=4m
+COUNT=$((IMAGE_SIZE / 1024 / 1024 / 4))
+COUNT=$((COUNT + 1))  # Add one block for safety
+
+if command -v pv &> /dev/null; then
+    log_info "Writing with progress bar..."
+    dd if="$UNCOMPRESSED_IMAGE" bs="$BS" count="$COUNT" 2>/dev/null | \
+        pv -s "${IMAGE_SIZE_MB}M" | \
+        dd of="$TARGET_DEVICE" bs="$BS" 2>/dev/null
 else
-    # Restore without pv
-    gunzip -c "$BACKUP_FILE" | \
-        sudo dd of="$TARGET_DEVICE" bs=4m status=progress 2>&1 | tee -a "$LOG_FILE"
+    log_info "Writing (this may take a while)..."
+    dd if="$UNCOMPRESSED_IMAGE" bs="$BS" count="$COUNT" status=progress of="$TARGET_DEVICE" 2>&1
 fi
 
-RESTORE_EXIT_CODE=${PIPESTATUS[0]}
+WRITE_EXIT_CODE=${PIPESTATUS[0]}
+
+if [ $WRITE_EXIT_CODE -ne 0 ]; then
+    log_error "Failed to write image to target device"
+    exit 1
+fi
+
+# Sync to ensure data is written
+sync
+log_info "Image written successfully"
 
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
 DURATION_MIN=$((DURATION / 60))
 DURATION_SEC=$((DURATION % 60))
+log_info "Duration: ${DURATION_MIN}m ${DURATION_SEC}s"
 
-# Check restore result
-if [ $RESTORE_EXIT_CODE -eq 0 ]; then
-    log_info ""
-    log_info "=== Restore Completed Successfully! ==="
-    log_info "Duration: ${DURATION_MIN}m ${DURATION_SEC}s"
-    
-    # Sync to ensure all data is written
-    log_info "Syncing disk..."
-    sync
-    
-    # Eject the disk (optional)
-    log_info "Restore completed. You can now safely remove the SD card."
-    log_info "To eject: diskutil eject $(echo $TARGET_DEVICE | sed 's/rdisk/disk/')"
-    
-else
-    log_error "Restore failed with exit code: $RESTORE_EXIT_CODE"
-    log_error "Please check the log file: $LOG_FILE"
+# Step 9: Read partition table from written image
+log_step "Step 9: Reading partition table from target device..."
+sleep 2  # Wait for device to be ready
+
+GPT_OUTPUT=$(gpt show "$TARGET_DISK" 2>&1)
+if [ $? -ne 0 ]; then
+    log_error "Failed to read partition table from target device"
+    log_error "Output: $GPT_OUTPUT"
     exit 1
 fi
 
+# Step 10: Calculate new partition sizes
+log_step "Step 10: Calculating new partition sizes..."
+
+# Get target device size in sectors
+TARGET_SIZE_SECTORS=$((TARGET_SIZE_BYTES / 512))
+# Reserve space for GPT (34 sectors at start + 33 sectors at end)
+GPT_RESERVED=67
+# Reserve extra space at the end for GPT backup (safety margin)
+END_RESERVE=100
+AVAILABLE_SECTORS=$((TARGET_SIZE_SECTORS - GPT_RESERVED - END_RESERVE))
+
+log_info "Target device: ${TARGET_SIZE_SECTORS} sectors"
+log_info "Available for partitions: ${AVAILABLE_SECTORS} sectors"
+
+# Parse existing partitions and calculate new sizes
+declare -a PARTITION_STARTS
+declare -a PARTITION_SIZES
+declare -a PARTITION_TYPES
+declare -a PARTITION_INDICES
+declare -a PARTITION_UUIDS
+TOTAL_FIXED_SIZE=0
+MAIN_PARTITION_NEW_SIZE=0
+MAIN_PARTITION_START=0
+
+PARTITION_INDEX=0
+while IFS= read -r line; do
+    if [[ $line =~ ^[[:space:]]*[0-9]+[[:space:]]+[0-9]+[[:space:]]+[0-9]+[[:space:]]+GPT[[:space:]]+part ]]; then
+        START_SECTOR=$(echo "$line" | awk '{print $1}')
+        SIZE_SECTORS=$(echo "$line" | awk '{print $2}')
+        INDEX=$(echo "$line" | awk '{print $3}')
+        PARTITION_TYPE=$(echo "$line" | awk '{for(i=5;i<=NF;i++) printf "%s ", $i; print ""}' | xargs)
+        
+        # Extract UUID from partition type
+        UUID=$(echo "$PARTITION_TYPE" | grep -oE "[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}" | head -1)
+        
+        if [ -n "$START_SECTOR" ] && [ -n "$SIZE_SECTORS" ] && [ "$START_SECTOR" != "0" ]; then
+            PARTITION_STARTS[$PARTITION_INDEX]=$START_SECTOR
+            PARTITION_SIZES[$PARTITION_INDEX]=$SIZE_SECTORS
+            PARTITION_TYPES[$PARTITION_INDEX]=$PARTITION_TYPE
+            PARTITION_INDICES[$PARTITION_INDEX]=$INDEX
+            PARTITION_UUIDS[$PARTITION_INDEX]=$UUID
+            
+            log_info "Found partition $INDEX: start=$START_SECTOR, size=$SIZE_SECTORS sectors"
+            
+            # If this is not the main partition, keep original size
+            if [ "$INDEX" != "$MAIN_PARTITION_INDEX" ]; then
+                TOTAL_FIXED_SIZE=$((TOTAL_FIXED_SIZE + SIZE_SECTORS))
+            else
+                # This is the main partition
+                MAIN_PARTITION_START=$START_SECTOR
+            fi
+            
+            PARTITION_INDEX=$((PARTITION_INDEX + 1))
+        fi
+    fi
+done <<< "$GPT_OUTPUT"
+
+# Calculate new size for main partition
+# Available space = Total sectors - GPT reserved - fixed partitions - partition start offset
+# Main partition new size = Available sectors - (start of main partition)
+if [ $MAIN_PARTITION_START -eq 0 ]; then
+    log_error "Could not find main partition start"
+    exit 1
+fi
+
+# Calculate space after all fixed partitions
+# Find the end of the last fixed partition
+LAST_FIXED_END=$MAIN_PARTITION_START
+for i in "${!PARTITION_INDICES[@]}"; do
+    if [ "${PARTITION_INDICES[$i]}" != "$MAIN_PARTITION_INDEX" ]; then
+        FIXED_START=${PARTITION_STARTS[$i]}
+        FIXED_SIZE=${PARTITION_SIZES[$i]}
+        FIXED_END=$((FIXED_START + FIXED_SIZE))
+        if [ $FIXED_END -gt $LAST_FIXED_END ]; then
+            LAST_FIXED_END=$FIXED_END
+        fi
+    fi
+done
+
+# Main partition should start after the last fixed partition or at its original position
+if [ $MAIN_PARTITION_START -lt $LAST_FIXED_END ]; then
+    MAIN_PARTITION_START=$LAST_FIXED_END
+fi
+
+# Calculate new size: from main partition start to end of available space
+MAIN_PARTITION_NEW_SIZE=$((AVAILABLE_SECTORS - MAIN_PARTITION_START))
+
+if [ $MAIN_PARTITION_NEW_SIZE -le 0 ]; then
+    log_error "Calculated partition size is invalid: ${MAIN_PARTITION_NEW_SIZE} sectors"
+    exit 1
+fi
+
+log_info "Main partition will be resized:"
+if [ "$MAIN_PARTITION_SIZE" -gt 0 ]; then
+    ORIGINAL_SIZE_GB=$(echo "scale=2; $MAIN_PARTITION_SIZE * 512 / 1024 / 1024 / 1024" | bc)
+    log_info "  Original: start=$MAIN_PARTITION_START, size=$MAIN_PARTITION_SIZE sectors (${ORIGINAL_SIZE_GB} GB)"
+else
+    log_info "  Original: start=$MAIN_PARTITION_START, size=unknown"
+fi
+NEW_SIZE_GB=$(echo "scale=2; $MAIN_PARTITION_NEW_SIZE * 512 / 1024 / 1024 / 1024" | bc)
+log_info "  New: start=$MAIN_PARTITION_START, size=${MAIN_PARTITION_NEW_SIZE} sectors (${NEW_SIZE_GB} GB)"
+
+# Step 11: Recreate GPT partition table with new sizes
+log_step "Step 11: Recreating GPT partition table..."
+
+# Destroy existing GPT and create new one
+log_info "Destroying existing partition table..."
+gpt destroy "$TARGET_DISK" 2>/dev/null || true
+
+log_info "Initializing new GPT partition table..."
+# Initialize GPT with the full disk size
+gpt create "$TARGET_DISK" 2>&1 || {
+    log_error "Failed to initialize GPT partition table"
+    exit 1
+}
+
+log_info "Creating partitions with adjusted sizes..."
+
+# Create array of partition info for sorting
+declare -a PARTITION_INFO_ARRAY
+PARTITION_INFO_COUNT=0
+
+# First, collect all partitions with their info
+for i in "${!PARTITION_INDICES[@]}"; do
+    INDEX=${PARTITION_INDICES[$i]}
+    START=${PARTITION_STARTS[$i]}
+    UUID=${PARTITION_UUIDS[$i]}
+    
+    if [ "$INDEX" = "$MAIN_PARTITION_INDEX" ]; then
+        # Use new size and start for main partition
+        START=$MAIN_PARTITION_START
+        SIZE=$MAIN_PARTITION_NEW_SIZE
+    else
+        # Keep original size for other partitions
+        SIZE=${PARTITION_SIZES[$i]}
+    fi
+    
+    # Store as: "START INDEX SIZE UUID"
+    PARTITION_INFO_ARRAY[$PARTITION_INFO_COUNT]="$START $INDEX $SIZE $UUID"
+    PARTITION_INFO_COUNT=$((PARTITION_INFO_COUNT + 1))
+done
+
+# Sort partitions by start sector (simple bubble sort)
+for ((i=0; i<PARTITION_INFO_COUNT-1; i++)); do
+    for ((j=0; j<PARTITION_INFO_COUNT-i-1; j++)); do
+        START_I=$(echo "${PARTITION_INFO_ARRAY[$j]}" | awk '{print $1}')
+        START_J=$(echo "${PARTITION_INFO_ARRAY[$((j+1))]}" | awk '{print $1}')
+        if [ "$START_I" -gt "$START_J" ]; then
+            # Swap
+            temp="${PARTITION_INFO_ARRAY[$j]}"
+            PARTITION_INFO_ARRAY[$j]="${PARTITION_INFO_ARRAY[$((j+1))]}"
+            PARTITION_INFO_ARRAY[$((j+1))]="$temp"
+        fi
+    done
+done
+
+# Create partitions in order
+for i in $(seq 0 $((PARTITION_INFO_COUNT - 1))); do
+    START=$(echo "${PARTITION_INFO_ARRAY[$i]}" | awk '{print $1}')
+    INDEX=$(echo "${PARTITION_INFO_ARRAY[$i]}" | awk '{print $2}')
+    SIZE=$(echo "${PARTITION_INFO_ARRAY[$i]}" | awk '{print $3}')
+    UUID=$(echo "${PARTITION_INFO_ARRAY[$i]}" | awk '{print $4}')
+    
+    if [ -n "$UUID" ]; then
+        if [ "$INDEX" = "$MAIN_PARTITION_INDEX" ]; then
+            log_info "Creating partition $INDEX: start=$START, size=$SIZE sectors (resized to $(echo "scale=2; $SIZE * 512 / 1024 / 1024 / 1024" | bc) GB)"
+        else
+            log_info "Creating partition $INDEX: start=$START, size=$SIZE sectors (original)"
+        fi
+        
+        gpt add -b "$START" -s "$SIZE" -t "$UUID" "$TARGET_DISK" 2>&1 || {
+            log_error "Failed to create partition $INDEX"
+            exit 1
+        }
+    else
+        log_warn "Could not extract UUID for partition $INDEX, skipping..."
+    fi
+done
+
+log_info "Partition table recreated successfully"
+
+# Step 12: Note about filesystem expansion
+log_step "Step 12: Filesystem expansion information..."
+
+# Get main partition device
+MAIN_PARTITION_DEVICE="${TARGET_DISK}s${MAIN_PARTITION_INDEX}"
+
+log_info "Main partition device: $MAIN_PARTITION_DEVICE"
+log_info "New partition size: $(echo "scale=2; $MAIN_PARTITION_NEW_SIZE * 512 / 1024 / 1024 / 1024" | bc) GB"
+
+log_info ""
+log_info "Note: Filesystem expansion on macOS"
+log_info "-----------------------------------"
+log_info "The partition has been resized to fit the new SD card."
+log_info "However, the ext4 filesystem inside the partition still needs to be expanded"
+log_info "to use the full partition space. This can be done in two ways:"
+log_info ""
+log_info "Option 1: Automatic expansion (recommended)"
+log_info "  Most modern Linux systems (including Lichee RV Dock) automatically expand"
+log_info "  the filesystem on first boot. Just insert the SD card and boot normally."
+log_info ""
+log_info "Option 2: Manual expansion (if automatic expansion doesn't work)"
+log_info "  After booting the system, run:"
+log_info "    sudo resize2fs /dev/mmcblk0p${MAIN_PARTITION_INDEX}"
+log_info "  Or:"
+log_info "    sudo resize2fs /dev/sda${MAIN_PARTITION_INDEX}"
+log_info "  (The device name may vary depending on your system)"
+log_info ""
+log_warn "The SD card is ready to use, but the filesystem will use the original size"
+log_warn "until it is expanded (usually happens automatically on first boot)."
+
+# Step 13: Verify
+log_step "Step 13: Verifying restore..."
+
+# Remount to verify
+if diskutil mountDisk "$TARGET_DISK" 2>/dev/null; then
+    log_info "Target device mounted successfully"
+else
+    log_warn "Could not mount target device (this is normal for Linux filesystems on macOS)"
+fi
+
+# Get final partition info
+FINAL_GPT=$(gpt show "$TARGET_DISK" 2>&1)
+log_info "Final partition table:"
+echo "$FINAL_GPT" | grep "GPT part" | while read line; do
+    log_info "  $line"
+done
+
+log_info ""
+log_info "=== Restore Completed! ==="
+log_info "Image restored to: $TARGET_DEVICE"
+log_info "Partition sizes adjusted to fit target SD card"
+log_info ""
+log_info "The SD card is ready to use!"
+log_info "Insert it into your device and boot normally."
+log_info ""
+log_info "✅ Done!"

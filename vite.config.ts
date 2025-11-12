@@ -1,13 +1,17 @@
+import { fileURLToPath } from "node:url";
 import path from "node:path";
 import legacy from "@vitejs/plugin-legacy";
 import react from "@vitejs/plugin-react-swc";
 import svgr from "vite-plugin-svgr";
 import { defineConfig } from "vite";
 
+// Get __dirname equivalent in ESM
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 export default defineConfig({
   root: "src",
   server: {
-    port: 3000,
+    port: 5173,
     strictPort: true,
     watch: {
       ignored: ["**/src-tauri/**", "**/clash-verge-rev/**"],
@@ -21,9 +25,9 @@ export default defineConfig({
       renderLegacyChunks: false,
       modernPolyfills: true,
       additionalModernPolyfills: [
-        path.resolve("./src/polyfills/matchMedia.js"),
-        path.resolve("./src/polyfills/WeakRef.js"),
-        path.resolve("./src/polyfills/RegExp.js"),
+        path.resolve(__dirname, "src/polyfills/matchMedia.js"),
+        path.resolve(__dirname, "src/polyfills/WeakRef.js"),
+        path.resolve(__dirname, "src/polyfills/RegExp.js"),
       ],
     }),
   ],
@@ -93,8 +97,10 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@": path.resolve("./src"),
-      "@root": path.resolve("."),
+      // When root is "src", Vite's working directory is "src"
+      // So "@" should point to the src directory (current working directory in Vite)
+      "@": path.resolve(__dirname, "src"),
+      "@root": path.resolve(__dirname),
     },
   },
   define: {

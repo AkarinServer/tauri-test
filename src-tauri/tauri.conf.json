@@ -17,7 +17,7 @@
     "beforeBuildCommand": "npm run web:build",
     "frontendDist": "../dist",
     "beforeDevCommand": "npm run web:dev",
-    "devUrl": "http://localhost:3000/"
+    "devUrl": "http://localhost:5173/"
   },
   "productName": "RV Verge",
   "identifier": "io.github.rv-verge.rv-verge",

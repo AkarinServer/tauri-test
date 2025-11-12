@@ -5,7 +5,13 @@ import { BaseErrorBoundary } from "@/components/base";
 import { useThemeMode } from "@/services/states";
 
 const Layout = () => {
-  const mode = useThemeMode();
+  let mode: "light" | "dark" = "light";
+  try {
+    mode = useThemeMode();
+  } catch (error) {
+    console.error("[Layout] useThemeMode failed:", error);
+  }
+
   const theme = createTheme({
     palette: {
       mode: mode === "light" ? "light" : "dark",
@@ -22,6 +28,7 @@ const Layout = () => {
           height: "100vh",
           display: "flex",
           flexDirection: "column",
+          backgroundColor: mode === "dark" ? "#121212" : "#ffffff",
         }}
       >
         <Box
