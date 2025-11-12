@@ -1,14 +1,18 @@
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import os from "node:os";
+import { createRequire } from "node:module";
 import legacy from "@vitejs/plugin-legacy";
 import react from "@vitejs/plugin-react";
-import reactSwc from "@vitejs/plugin-react-swc";
 import svgr from "vite-plugin-svgr";
 import { defineConfig } from "vite";
+import type { Plugin } from "vite";
 
 // Get __dirname equivalent in ESM
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Create require function for CommonJS modules
+const require = createRequire(import.meta.url);
 
 // Detect architecture - use Babel-based React plugin for RISC-V, SWC for others
 // SWC doesn't have native bindings for RISC-V, so we must use Babel-based plugin
@@ -18,16 +22,30 @@ const isRiscV =
   process.arch === "riscv64" ||
   os.arch() === "riscv64";
 
-// Use Babel-based React plugin for RISC-V (SWC doesn't support RISC-V)
-// Use SWC-based React plugin for other architectures (faster)
-const reactPlugin = isRiscV ? react() : reactSwc();
-
-if (isRiscV) {
-  console.log("[vite.config.ts] Detected RISC-V architecture, using Babel-based React plugin (@vitejs/plugin-react)");
-  console.log(`[vite.config.ts] TARGET_ARCH: ${process.env.TARGET_ARCH}, RUNNER_ARCH: ${process.env.RUNNER_ARCH}, process.arch: ${process.arch}, os.arch(): ${os.arch()}`);
-} else {
-  console.log(`[vite.config.ts] Using SWC-based React plugin (@vitejs/plugin-react-swc) - arch: ${process.arch || os.arch()}`);
+// Get React plugin based on architecture
+// We can't import @vitejs/plugin-react-swc on RISC-V because it will try to load @swc/core
+// which doesn't have native bindings for RISC-V. So we use a function to load it conditionally.
+function getReactPlugin(): Plugin {
+  if (isRiscV) {
+    console.log("[vite.config.ts] Detected RISC-V architecture, using Babel-based React plugin (@vitejs/plugin-react)");
+    console.log(`[vite.config.ts] TARGET_ARCH: ${process.env.TARGET_ARCH}, RUNNER_ARCH: ${process.env.RUNNER_ARCH}, process.arch: ${process.arch}, os.arch(): ${os.arch()}`);
+    return react();
+  } else {
+    // Only try to load SWC plugin when not on RISC-V
+    try {
+      // Use createRequire to load CommonJS module
+      const reactSwc = require("@vitejs/plugin-react-swc");
+      console.log(`[vite.config.ts] Using SWC-based React plugin (@vitejs/plugin-react-swc) - arch: ${process.arch || os.arch()}`);
+      return reactSwc.default ? reactSwc.default() : reactSwc();
+    } catch (error) {
+      // Fallback to Babel if SWC fails to load
+      console.warn("[vite.config.ts] Failed to load SWC plugin, falling back to Babel:", error);
+      return react();
+    }
+  }
 }
+
+const reactPlugin = getReactPlugin();
 
 export default defineConfig({
   root: "src",

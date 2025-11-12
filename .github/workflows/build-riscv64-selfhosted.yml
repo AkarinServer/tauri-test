@@ -119,12 +119,36 @@ jobs:
           echo "Current directory: $(pwd)"
           ls -la
           
+          # On RISC-V, we need to remove @vitejs/plugin-react-swc from package.json
+          # before installing dependencies because it will try to load @swc/core
+          # which doesn't have native bindings for RISC-V
+          # We'll use @vitejs/plugin-react (Babel-based) instead
+          if [ -f package.json ]; then
+            echo "Removing @vitejs/plugin-react-swc from package.json for RISC-V build..."
+            # Use node to remove the SWC plugin from package.json
+            node -e "
+              const fs = require('fs');
+              const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+              if (pkg.devDependencies && pkg.devDependencies['@vitejs/plugin-react-swc']) {
+                delete pkg.devDependencies['@vitejs/plugin-react-swc'];
+                fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+                console.log('Removed @vitejs/plugin-react-swc from package.json');
+              }
+            "
+          fi
+          
           if [ -f package-lock.json ]; then
             echo "Found package-lock.json, using npm ci"
             npm ci
           else
             echo "Warning: package-lock.json not found, using npm install"
             npm install
+          fi
+          
+          # Ensure @vitejs/plugin-react is installed (Babel-based)
+          if ! npm list @vitejs/plugin-react >/dev/null 2>&1; then
+            echo "Installing @vitejs/plugin-react..."
+            npm install --save-dev @vitejs/plugin-react
           fi
 
       - name: Run prebuild

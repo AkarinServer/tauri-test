@@ -493,16 +493,66 @@ log_info "  New: start=$MAIN_PARTITION_START, size=${MAIN_PARTITION_NEW_SIZE} se
 # Step 11: Recreate GPT partition table with new sizes
 log_step "Step 11: Recreating GPT partition table..."
 
+# Ensure device is unmounted
+log_info "Ensuring device is unmounted..."
+diskutil unmountDisk "$TARGET_DISK" 2>/dev/null || true
+sleep 2
+
 # Destroy existing GPT and create new one
 log_info "Destroying existing partition table..."
-gpt destroy "$TARGET_DISK" 2>/dev/null || true
+# Try multiple times to destroy GPT, as it may be locked
+for attempt in 1 2 3; do
+    if gpt destroy "$TARGET_DISK" 2>/dev/null; then
+        log_info "Existing GPT destroyed successfully"
+        break
+    else
+        if [ $attempt -lt 3 ]; then
+            log_warn "Attempt $attempt to destroy GPT failed, retrying..."
+            sleep 2
+            diskutil unmountDisk "$TARGET_DISK" 2>/dev/null || true
+            sleep 1
+        else
+            log_warn "Could not destroy existing GPT (may not exist or already destroyed)"
+        fi
+    fi
+done
+
+sleep 1
 
 log_info "Initializing new GPT partition table..."
 # Initialize GPT with the full disk size
-gpt create "$TARGET_DISK" 2>&1 || {
-    log_error "Failed to initialize GPT partition table"
-    exit 1
-}
+# Try multiple times as device may need time to be ready
+for attempt in 1 2 3; do
+    GPT_CREATE_OUTPUT=$(gpt create "$TARGET_DISK" 2>&1)
+    GPT_CREATE_EXIT=$?
+    
+    if [ $GPT_CREATE_EXIT -eq 0 ]; then
+        log_info "GPT partition table created successfully"
+        break
+    else
+        if [ $attempt -lt 3 ]; then
+            log_warn "Attempt $attempt to create GPT failed: $GPT_CREATE_OUTPUT"
+            log_warn "Retrying after unmounting device..."
+            diskutil unmountDisk "$TARGET_DISK" 2>/dev/null || true
+            sleep 2
+        else
+            log_error "Failed to initialize GPT partition table after 3 attempts"
+            log_error "Error: $GPT_CREATE_OUTPUT"
+            log_error ""
+            log_error "This may be due to:"
+            log_error "  1. Device is locked or in use"
+            log_error "  2. System Integrity Protection (SIP) restrictions"
+            log_error "  3. Device needs to be physically removed and reinserted"
+            log_error ""
+            log_info "Try:"
+            log_info "  1. Physically remove and reinsert the SD card"
+            log_info "  2. Wait a few seconds"
+            log_info "  3. Run: sudo ./prepare-sd-card.sh $TARGET_DEVICE"
+            log_info "  4. Then run this restore script again"
+            exit 1
+        fi
+    fi
+done
 
 log_info "Creating partitions with adjusted sizes..."
 
