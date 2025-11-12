@@ -31,7 +31,9 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "RV Verge",
+        "url": "/",
         "width": 1200,
         "height": 800,
         "resizable": true,
