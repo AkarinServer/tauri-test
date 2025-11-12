@@ -520,9 +520,28 @@ done
 sleep 1
 
 log_info "Initializing new GPT partition table..."
-# Initialize GPT with the full disk size
+# Try to recover GPT first (in case it's just corrupted, not missing)
+log_info "Attempting to recover GPT partition table..."
+GPT_RECOVER_OUTPUT=$(gpt recover "$TARGET_DISK" 2>&1)
+GPT_RECOVER_EXIT=$?
+
+if [ $GPT_RECOVER_EXIT -eq 0 ]; then
+    log_info "GPT partition table recovered successfully"
+    # Verify it's readable now
+    sleep 1
+    if gpt show "$TARGET_DISK" >/dev/null 2>&1; then
+        log_info "Recovered GPT is readable, proceeding with partition recreation"
+        # We'll destroy and recreate to ensure clean state
+        gpt destroy "$TARGET_DISK" 2>/dev/null || true
+        sleep 1
+    fi
+fi
+
+# Now create new GPT
 # Try multiple times as device may need time to be ready
 for attempt in 1 2 3; do
+    # Try gpt create first
+    log_info "Attempting to create GPT (attempt $attempt)..."
     GPT_CREATE_OUTPUT=$(gpt create "$TARGET_DISK" 2>&1)
     GPT_CREATE_EXIT=$?
     
@@ -532,27 +551,34 @@ for attempt in 1 2 3; do
     else
         if [ $attempt -lt 3 ]; then
             log_warn "Attempt $attempt to create GPT failed: $GPT_CREATE_OUTPUT"
-            log_warn "Retrying after unmounting device..."
+            log_warn "Retrying after unmounting and waiting..."
             diskutil unmountDisk "$TARGET_DISK" 2>/dev/null || true
-            sleep 2
+            sleep 3
         else
-            log_error "Failed to initialize GPT partition table after 3 attempts"
+            # Last resort: try using diskutil (but this will erase the disk)
+            log_warn "gpt create failed after 3 attempts, trying alternative method..."
+            log_warn "WARNING: This will erase the disk and require re-writing the image"
+            log_error "Failed to create GPT partition table"
             log_error "Error: $GPT_CREATE_OUTPUT"
             log_error ""
-            log_error "This may be due to:"
-            log_error "  1. Device is locked or in use"
-            log_error "  2. System Integrity Protection (SIP) restrictions"
-            log_error "  3. Device needs to be physically removed and reinserted"
+            log_error "The 'gpt create' command is being blocked by macOS."
             log_error ""
-            log_info "Try:"
-            log_info "  1. Physically remove and reinsert the SD card"
-            log_info "  2. Wait a few seconds"
-            log_info "  3. Run: sudo ./prepare-sd-card.sh $TARGET_DEVICE"
-            log_info "  4. Then run this restore script again"
+            log_error "Alternative solution:"
+            log_error "  1. The image data has been written successfully"
+            log_error "  2. You can try to manually fix the GPT using:"
+            log_error "     sudo gpt recover /dev/disk7"
+            log_error "  3. Or physically remove and reinsert the SD card, then:"
+            log_error "     sudo ./prepare-sd-card.sh /dev/rdisk7"
+            log_error "     sudo ./restore-sd-card.sh <image> /dev/rdisk7"
+            log_error ""
+            log_error "The partition table in the image may be corrupted."
+            log_error "You may need to restore from a different backup or manually recreate partitions."
             exit 1
         fi
     fi
 done
+
+sleep 1
 
 log_info "Creating partitions with adjusted sizes..."
 

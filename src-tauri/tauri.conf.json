@@ -14,7 +14,7 @@
     "createUpdaterArtifacts": false
   },
   "build": {
-    "beforeBuildCommand": "npm run web:build",
+    "beforeBuildCommand": "",
     "frontendDist": "../dist",
     "beforeDevCommand": "npm run web:dev",
     "devUrl": "http://localhost:5173/"
