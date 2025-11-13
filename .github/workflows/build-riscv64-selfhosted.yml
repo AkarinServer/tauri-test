@@ -151,18 +151,8 @@ jobs:
           # Incremental compilation adds overhead and may not help on RISC-V
           echo "CARGO_INCREMENTAL=0" >> $GITHUB_ENV
           
-          # Limit parallel jobs to avoid memory issues on RISC-V
-          # Use 2 jobs max to prevent OOM and reduce context switching overhead
-          # RISC-V devices typically have limited RAM and CPU performance
-          CPU_CORES=$(nproc || echo 2)
-          # Use min(CPU_CORES, 2) to avoid overwhelming the system
-          if [ $CPU_CORES -gt 2 ]; then
-            CARGO_JOBS=2
-          else
-            CARGO_JOBS=$CPU_CORES
-          fi
-          echo "CARGO_BUILD_JOBS=$CARGO_JOBS" >> $GITHUB_ENV
-          echo "Using $CARGO_JOBS parallel jobs for Cargo compilation (RISC-V optimized)"
+          # Use all available CPU cores for parallel compilation
+          echo "CARGO_BUILD_JOBS=$(nproc || echo 4)" >> $GITHUB_ENV
           
           echo "CARGO_TERM_PROGRESS_WHEN=always" >> $GITHUB_ENV
           echo "CARGO_TERM_PROGRESS_WIDTH=80" >> $GITHUB_ENV
