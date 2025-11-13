@@ -16,27 +16,47 @@ RV Verge 是 Clash Verge Rev 的轻量化版本，专门针对 RISC-V 设备（�
 ### ✅ 已实现功能
 
 - [x] 基础项目结构
-- [x] Tauri 后端框架
+- [x] Tauri 后端框架（完整集成 clash-verge-rev 后端）
 - [x] React 前端框架
 - [x] 路由系统
-- [x] 国际化（i18n）基础
+- [x] 国际化（i18n）基础（中英文支持）
 - [x] 主题系统
-- [x] Home 页面基础框架
+- [x] Home 页面完整实现
+  - [x] Clash Mode Card（代理模式切换）
+  - [x] System Info Card（系统信息显示）
+  - [x] Traffic Graph（流量图表）- EnhancedCanvasTrafficGraph
+  - [x] Traffic Stats（实时流量统计）- EnhancedTrafficStats
+  - [x] IP Info Card（IP 信息显示，精简版）- IpInfoCard
+  - [x] Profile Card（配置文件快捷信息）- HomeProfileCard
+- [x] Profiles 页面核心功能
+  - [x] 配置文件列表显示 - ProfileItem
+  - [x] 配置文件导入功能（URL 导入）- import-profile-dialog.tsx
+  - [x] 配置文件切换功能
+  - [x] 配置文件删除功能（带确认对话框）
 - [x] 基础服务层（Services）
+  - [x] cmds.ts（Tauri 命令封装）
+  - [x] config.ts（SWR 配置）
+  - [x] api.ts（IP 信息获取服务）
+- [x] Hooks 实现
+  - [x] useVerge
+  - [x] useTrafficData（流量数据获取）
+  - [x] useTrafficMonitor（增强版流量监控，支持数据采样和压缩）
 - [x] 窗口管理
 - [x] 错误边界
 - [x] 类型定义基础
+- [x] 性能优化
+  - [x] 后端启动性能优化（健康检查间隔优化、主动连接检测）
+  - [x] 前端刷新间隔优化（SWR_SLOW_POLL、uptime 刷新优化）
+  - [x] 启动诊断工具（debug_startup.rs）
 
 ### 🚧 部分实现功能
 
-- [x] Home 页面（部分卡片组件）
-  - [x] Clash Mode Card
-  - [x] Current Proxy Card
-  - [x] System Info Card
-  - [ ] Traffic Graph（流量图表）
-  - [ ] IP Info Card（IP 信息）
-  - [ ] Profile Card（配置文件）
-  - [ ] Test Card（测试功能）
+- [x] Profiles 页面（核心功能已完成，编辑功能待实现）
+  - [x] 配置文件列表
+  - [x] 配置文件导入
+  - [x] 配置文件切换
+  - [x] 配置文件删除
+  - [ ] 配置文件编辑（轻量化编辑器）
 
 ## 功能模块清单
 
@@ -44,10 +64,11 @@ RV Verge 是 Clash Verge Rev 的轻量化版本，专门针对 RISC-V 设备（�
 
 #### 1.1 Home 页面 (`/`)
 - [x] 基础框架
-- [ ] 流量监控图表
-- [ ] 实时流量统计
-- [ ] IP 信息显示
-- [ ] 配置文件快捷切换
+- [x] 流量监控图表（Canvas 实现，性能优化）
+- [x] 实时流量统计（上传/下载速度显示）
+- [x] IP 信息显示（精简版：国旗 + IP 地址）
+- [x] 配置文件快捷切换（显示当前配置信息）
+- [x] 系统信息显示（运行模式、运行时间、代理端口）
 - [ ] 测试功能
 - [ ] TUN 模式显示
 
@@ -60,12 +81,14 @@ RV Verge 是 Clash Verge Rev 的轻量化版本，专门针对 RISC-V 设备（�
 - [ ] 代理搜索和过滤
 - [ ] 代理延迟测试
 
-#### 1.3 Profiles 页面 (`/profile`)
-- [ ] 配置文件列表
-- [ ] 配置文件创建/编辑/删除
-- [ ] 配置文件导入/导出
-- [ ] 配置文件切换
+#### 1.3 Profiles 页面 (`/profiles`)
+- [x] 配置文件列表（ProfileItem 组件）
+- [x] 配置文件删除（带确认对话框）
+- [x] 配置文件导入（URL 导入，支持剪贴板粘贴）
+- [x] 配置文件切换（切换当前使用的配置）
+- [ ] 配置文件创建/编辑
 - [ ] 配置文件编辑器（轻量化替代 Monaco Editor）
+- [ ] 配置文件导出
 - [ ] 配置文件验证
 - [ ] 配置文件备份/恢复
 
@@ -135,14 +158,13 @@ RV Verge 是 Clash Verge Rev 的轻量化版本，专门针对 RISC-V 设备（�
 - [ ] NoticeManager
 
 #### 2.2 Home 组件
-- [x] EnhancedCard
-- [x] ClashModeCard
-- [x] CurrentProxyCard
-- [x] SystemInfoCard
-- [ ] EnhancedTrafficStats
-- [ ] EnhancedCanvasTrafficGraph
-- [ ] IPInfoCard
-- [ ] HomeProfileCard
+- [x] EnhancedCard（通用卡片组件）
+- [x] ClashModeCard（代理模式切换卡片）
+- [x] SystemInfoCard（系统信息卡片）
+- [x] EnhancedTrafficStats（实时流量统计组件）
+- [x] EnhancedCanvasTrafficGraph（Canvas 实现的流量图表）
+- [x] IPInfoCard（IP 信息卡片，精简版）
+- [x] HomeProfileCard（配置文件信息卡片）
 - [ ] ProxyTunCard
 - [ ] TestCard
 - [ ] ClashInfoCard
@@ -162,7 +184,8 @@ RV Verge 是 Clash Verge Rev 的轻量化版本，专门针对 RISC-V 设备（�
 - [ ] useWindowWidth
 
 #### 2.4 Profile 组件
-- [ ] ProfileItem
+- [x] ProfileItem（配置文件列表项组件）
+- [x] ImportProfileDialog（配置文件导入对话框）
 - [ ] ProfileBox
 - [ ] ProfileViewer
 - [ ] ProfileEditor（轻量化替代 Monaco Editor）
@@ -224,9 +247,9 @@ RV Verge 是 Clash Verge Rev 的轻量化版本，专门针对 RISC-V 设备（�
 - [ ] StackModeSwitch
 
 #### 2.9 Layout 组件
-- [ ] TrafficGraph
-- [ ] LayoutTraffic
-- [ ] LayoutItem
+- [x] LayoutTraffic（侧边栏流量显示）
+- [x] LayoutItem（侧边栏导航项）
+- [ ] TrafficGraph（独立流量图表组件）
 - [ ] ScrollTopButton
 - [ ] UpdateButton
 - [ ] UseCustomTheme
@@ -242,15 +265,15 @@ RV Verge 是 Clash Verge Rev 的轻量化版本，专门针对 RISC-V 设备（�
 ### 3. Hooks
 
 #### 3.1 核心 Hooks
-- [x] useVerge
+- [x] useVerge（配置管理）
+- [x] useTrafficData（流量数据获取，连接 Mihomo WebSocket）
+- [x] useTrafficMonitor（增强版流量监控，支持数据采样和压缩）
 - [ ] useClash
 - [ ] useCurrentProxy
 - [ ] useProxySelection
 - [ ] useProfiles
 - [ ] useConnectionData
 - [ ] useLogData
-- [ ] useTrafficData
-- [ ] useTrafficMonitor
 - [ ] useSystemState
 - [ ] useSystemProxyState
 - [ ] useMemoryData
@@ -265,11 +288,11 @@ RV Verge 是 Clash Verge Rev 的轻量化版本，专门针对 RISC-V 设备（�
 ### 4. Services
 
 #### 4.1 核心 Services
-- [x] cmds.ts（部分实现）
-- [x] config.ts（部分实现）
+- [x] cmds.ts（Tauri 命令封装，包含 Profile、System、Runtime 等命令）
+- [x] config.ts（SWR 配置，包含 SWR_DEFAULTS、SWR_REALTIME、SWR_SLOW_POLL）
+- [x] api.ts（IP 信息获取服务，支持多服务商和重试机制）
 - [x] i18n.ts
 - [x] states.ts
-- [ ] api.ts
 - [ ] noticeService.ts
 - [ ] update.ts
 - [ ] delay.ts
@@ -278,6 +301,7 @@ RV Verge 是 Clash Verge Rev 的轻量化版本，专门针对 RISC-V 设备（�
 
 #### 5.1 工具函数
 - [x] debounce.ts
+- [x] parse-traffic.ts（流量数据解析工具）
 - [ ] data-validator.ts
 - [ ] get-system.ts
 - [ ] helper.ts
@@ -285,7 +309,6 @@ RV Verge 是 Clash Verge Rev 的轻量化版本，专门针对 RISC-V 设备（�
 - [ ] is-async-function.ts
 - [ ] noop.ts
 - [ ] parse-hotkey.ts
-- [ ] parse-traffic.ts
 - [ ] traffic-diagnostics.ts
 - [ ] truncate-str.ts
 - [ ] uri-parser.ts
@@ -293,23 +316,36 @@ RV Verge 是 Clash Verge Rev 的轻量化版本，专门针对 RISC-V 设备（�
 ### 6. 后端（Rust）
 
 #### 6.1 Tauri Commands
-- [x] 基础 Commands（部分实现）
+- [x] 基础 Commands（系统信息、网络接口等）
+- [x] Profile 相关 Commands
+  - [x] get_profiles（获取配置文件列表）
+  - [x] import_profile（导入配置文件）
+  - [x] delete_profile（删除配置文件）
+  - [x] switch_profile（切换配置文件）
+  - [x] patch_profiles_config（更新配置文件配置）
+  - [x] create_profile（创建配置文件）
+  - [x] update_profile（更新配置文件）
+- [x] System 相关 Commands
+  - [x] get_running_mode（获取运行模式）
+  - [x] get_app_uptime（获取应用运行时间）
+  - [x] get_system_proxy（获取系统代理设置）
+- [x] Runtime 相关 Commands
+  - [x] get_runtime_config（获取运行时配置）
 - [ ] Clash 相关 Commands
-- [ ] Profile 相关 Commands
 - [ ] Connection 相关 Commands
 - [ ] Rule 相关 Commands
 - [ ] Log 相关 Commands
-- [ ] System 相关 Commands
 - [ ] Update 相关 Commands
 - [ ] Backup 相关 Commands
 
 #### 6.2 核心模块
-- [ ] Clash 核心管理
-- [ ] 配置文件管理
-- [ ] 系统代理管理
+- [x] Clash 核心管理（CoreManager，完整集成 clash-verge-rev 后端）
+- [x] 配置文件管理（Config、Profiles 模块）
+- [x] 系统代理管理（Sysopt 模块）
+- [x] 窗口管理（WindowManager）
+- [x] 启动性能优化（健康检查优化、主动连接检测、启动诊断工具）
 - [ ] 更新管理
 - [ ] 备份管理
-- [ ] 窗口管理
 - [ ] 通知管理
 
 ## 开发阶段规划
@@ -322,11 +358,11 @@ RV Verge 是 Clash Verge Rev 的轻量化版本，专门针对 RISC-V 设备（�
 - [x] 项目结构搭建
 - [x] 基础服务层实现
 - [x] Home 页面基础框架
-- [ ] Home 页面完整实现
-  - [ ] 流量监控图表
-  - [ ] 实时流量统计
-  - [ ] IP 信息显示
-  - [ ] 配置文件快捷切换
+- [x] Home 页面完整实现
+  - [x] 流量监控图表（Canvas 实现）
+  - [x] 实时流量统计（上传/下载速度）
+  - [x] IP 信息显示（精简版）
+  - [x] 配置文件快捷切换（显示当前配置信息）
 
 **预计时间**：1-2 周
 
@@ -355,15 +391,16 @@ RV Verge 是 Clash Verge Rev 的轻量化版本，专门针对 RISC-V 设备（�
 **目标**：实现配置文件的创建、编辑、切换等功能
 
 **任务**：
-- [ ] Profiles 页面实现
-- [ ] 配置文件列表
-- [ ] 配置文件创建/编辑/删除
-- [ ] 配置文件导入/导出
-- [ ] 配置文件切换
+- [x] Profiles 页面基础实现
+- [x] 配置文件列表（ProfileItem 组件）
+- [x] 配置文件删除（带确认对话框）
+- [x] 配置文件导入（URL 导入，支持剪贴板粘贴）
+- [x] 配置文件切换（切换当前使用的配置）
+- [ ] 配置文件创建/编辑
+- [ ] 配置文件导出
 - [ ] 轻量化配置文件编辑器（替代 Monaco Editor）
 - [ ] 配置文件验证
-- [ ] 配置文件相关 Hooks 实现
-- [ ] 配置文件相关组件实现
+- [x] 配置文件相关组件实现（ProfileItem、ImportProfileDialog）
 
 **预计时间**：3-4 周
 
@@ -709,15 +746,18 @@ RV Verge 是 Clash Verge Rev 的轻量化版本，专门针对 RISC-V 设备（�
 
 ### 立即行动（本周）
 
-1. 完成 Home 页面剩余功能
-   - 流量监控图表
-   - 实时流量统计
-   - IP 信息显示
-   - 配置文件快捷切换
+1. ✅ 完成 Home 页面剩余功能
+   - ✅ 流量监控图表
+   - ✅ 实时流量统计
+   - ✅ IP 信息显示
+   - ✅ 配置文件快捷切换
 
 2. 开始 Proxies 页面实现
    - 代理列表显示
    - 代理选择器
+
+3. 完善 Profiles 页面
+   - 配置文件编辑功能（轻量化编辑器）
 
 ### 短期行动（2-4 周）
 
@@ -758,6 +798,13 @@ RV Verge 是 Clash Verge Rev 的轻量化版本，专门针对 RISC-V 设备（�
 
 - **2024-11-13**：初始版本创建
 - **2024-11-13**：添加功能模块清单和开发阶段规划
+- **2024-11-13**：更新已实现功能
+  - ✅ Home 页面完整实现（流量图表、流量统计、IP 信息、配置文件卡片）
+  - ✅ Profiles 页面核心功能（列表、导入、切换、删除）
+  - ✅ 性能优化（后端启动优化、前端刷新间隔优化）
+  - ✅ 完整后端集成（clash-verge-rev 后端完整集成）
+  - ✅ Hooks 实现（useTrafficData、useTrafficMonitor）
+  - ✅ Services 实现（api.ts、cmds.ts 扩展）
 
 ## 联系方式
 
