@@ -341,8 +341,8 @@ jobs:
             for file in "$RELEASE_DIR/bundle/deb"/*.deb; do
               if [ -f "$file" ]; then
                 FILENAME=$(basename "$file")
-                # Check if file contains current version
-                if echo "$FILENAME" | grep -q "_${CURRENT_VERSION}_"; then
+                # Check if file contains current version (use -F for fixed string matching to avoid regex issues with dots)
+                if echo "$FILENAME" | grep -Fq "_${CURRENT_VERSION}_"; then
                   # Rename package: RV.Verge_0.1.74_riscv64.deb -> RV.Verge_0.1.74_linux_riscv64.deb
                   # Pattern: RV.Verge_VERSION_ARCH.deb -> RV.Verge_VERSION_linux_ARCH.deb
                   DIR=$(dirname "$file")
@@ -373,8 +373,8 @@ jobs:
             for file in "$RELEASE_DIR/bundle/rpm"/*.rpm; do
               if [ -f "$file" ]; then
                 FILENAME=$(basename "$file")
-                # Check if file contains current version
-                if echo "$FILENAME" | grep -q "-${CURRENT_VERSION}-"; then
+                # Check if file contains current version (use -F for fixed string matching to avoid regex issues with dots)
+                if echo "$FILENAME" | grep -Fq "-${CURRENT_VERSION}-"; then
                   # Rename package: RV.Verge-0.1.74-1.riscv64.rpm -> RV.Verge-0.1.74-1.linux.riscv64.rpm
                   # Pattern: name-VERSION-RELEASE.ARCH.rpm -> name-VERSION-RELEASE.linux.ARCH.rpm
                   DIR=$(dirname "$file")
