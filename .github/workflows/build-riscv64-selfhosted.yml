@@ -209,6 +209,28 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION (based on commit count: $COMMIT_COUNT)"
           
+          # Update package.json and Cargo.toml with new version (构建前更新版本)
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = '$VERSION';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+            console.log('Updated package.json version to', pkg.version);
+          "
+          
+          # Update Cargo.toml version
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+          echo "Updated Cargo.toml version to $VERSION"
+          
+          # Update tauri.conf.json version (required for correct package naming)
+          node -e "
+            const fs = require('fs');
+            const tauriConfig = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+            tauriConfig.version = '$VERSION';
+            fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(tauriConfig, null, 2) + '\n');
+            console.log('Updated tauri.conf.json version to', tauriConfig.version);
+          "
+          
       - name: Generate changelog
         id: changelog
         run: |
@@ -242,28 +264,6 @@ jobs:
           
           echo "Generated changelog:"
           echo "$CHANGELOG"
-          
-          # Update package.json and Cargo.toml with new version (构建前更新版本)
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            pkg.version = '$VERSION';
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-            console.log('Updated package.json version to', pkg.version);
-          "
-          
-          # Update Cargo.toml version
-          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
-          echo "Updated Cargo.toml version to $VERSION"
-          
-          # Update tauri.conf.json version (required for correct package naming)
-          node -e "
-            const fs = require('fs');
-            const tauriConfig = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
-            tauriConfig.version = '$VERSION';
-            fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(tauriConfig, null, 2) + '\n');
-            console.log('Updated tauri.conf.json version to', tauriConfig.version);
-          "
 
       - name: Run prebuild
         run: |
