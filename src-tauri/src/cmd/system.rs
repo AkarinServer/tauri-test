@@ -1,8 +1,6 @@
-use std::sync::Arc;
-
 use super::CmdResult;
 use crate::{
-    core::{CoreManager, handle, manager::RunningMode},
+    core::{CoreManager, handle},
     logging,
     module::sysinfo::PlatformSpecification,
     utils::logging::Type,

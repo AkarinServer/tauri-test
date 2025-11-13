@@ -1,14 +1,14 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "identifier": "io.github.clash-verge-rev.clash-verge-rev",
+  "identifier": "io.github.AkarinServer.rv-verge",
   "bundle": {
     "targets": ["deb", "rpm"],
     "linux": {
       "deb": {
         "depends": ["openssl"],
         "desktopTemplate": "./packages/linux/clash-verge.desktop",
-        "provides": ["clash-verge"],
-        "conflicts": ["clash-verge"],
+        "provides": ["rv-verge"],
+        "conflicts": ["clash-verge", "rv-verge"],
         "replaces": ["clash-verge"],
         "postInstallScript": "./packages/linux/post-install.sh",
         "preRemoveScript": "./packages/linux/pre-remove.sh"
@@ -16,17 +16,14 @@
       "rpm": {
         "depends": ["openssl"],
         "desktopTemplate": "./packages/linux/clash-verge.desktop",
-        "provides": ["clash-verge"],
-        "conflicts": ["clash-verge"],
+        "provides": ["rv-verge"],
+        "conflicts": ["clash-verge", "rv-verge"],
         "obsoletes": ["clash-verge"],
         "postInstallScript": "./packages/linux/post-install.sh",
         "preRemoveScript": "./packages/linux/pre-remove.sh"
       }
     },
     "externalBin": [
-      "./resources/clash-verge-service",
-      "./resources/clash-verge-service-install",
-      "./resources/clash-verge-service-uninstall",
       "./sidecar/verge-mihomo",
       "./sidecar/verge-mihomo-alpha"
     ]
