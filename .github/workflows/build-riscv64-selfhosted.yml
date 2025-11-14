@@ -204,37 +204,51 @@ jobs:
           echo "Current directory: $(pwd)"
           ls -la
           
-          # On RISC-V, we need to remove @vitejs/plugin-react-swc from package.json
-          # before installing dependencies because it will try to load @swc/core
-          # which doesn't have native bindings for RISC-V
-          # We'll use @vitejs/plugin-react (Babel-based) instead
-          if [ -f package.json ]; then
-            echo "Removing @vitejs/plugin-react-swc from package.json for RISC-V build..."
-            # Use node to remove the SWC plugin from package.json
-            node -e "
-              const fs = require('fs');
-              const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-              if (pkg.devDependencies && pkg.devDependencies['@vitejs/plugin-react-swc']) {
-                delete pkg.devDependencies['@vitejs/plugin-react-swc'];
-                fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-                console.log('Removed @vitejs/plugin-react-swc from package.json');
-              }
-            "
-          fi
-          
+          # Try to install dependencies normally first
+          # vite.config.ts has conditional loading that will use Babel on RISC-V
+          # If @swc/core installation fails, we'll remove it and retry
+          INSTALL_FAILED=false
           if [ -f package-lock.json ]; then
             echo "Found package-lock.json, using npm ci"
-            npm ci
+            npm ci || INSTALL_FAILED=true
           else
             echo "Warning: package-lock.json not found, using npm install"
-            npm install
+            npm install || INSTALL_FAILED=true
+          fi
+          
+          # If installation failed, try removing @vitejs/plugin-react-swc and retry
+          if [ "$INSTALL_FAILED" = true ]; then
+            echo "Warning: Installation failed, likely due to @swc/core on RISC-V"
+            echo "Removing @vitejs/plugin-react-swc and retrying..."
+            if [ -f package.json ]; then
+              node -e "
+                const fs = require('fs');
+                const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+                if (pkg.devDependencies && pkg.devDependencies['@vitejs/plugin-react-swc']) {
+                  delete pkg.devDependencies['@vitejs/plugin-react-swc'];
+                  fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+                  console.log('Removed @vitejs/plugin-react-swc from package.json');
+                }
+              "
+              # Remove from package-lock.json if it exists
+              if [ -f package-lock.json ]; then
+                npm ci || npm install
+              else
+                npm install
+              fi
+            fi
           fi
           
           # Ensure @vitejs/plugin-react is installed (Babel-based)
+          # vite.config.ts will use this on RISC-V even if SWC plugin is installed
           if ! npm list @vitejs/plugin-react >/dev/null 2>&1; then
             echo "Installing @vitejs/plugin-react..."
             npm install --save-dev @vitejs/plugin-react
           fi
+          
+          # Note: vite.config.ts will automatically use Babel on RISC-V
+          # even if @vitejs/plugin-react-swc is installed
+          echo "Dependencies installed. vite.config.ts will handle SWC/Babel selection based on architecture."
 
       - name: Calculate version
         id: version
