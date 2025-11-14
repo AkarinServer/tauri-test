@@ -226,28 +226,59 @@ impl NetworkManager {
             no_auth.to_string()
         };
 
+        use crate::utils::logging::Type;
+        use crate::logging;
+
+        logging!(debug, Type::Network, "[NetworkManager] 创建 HTTP 客户端: proxy_type={:?}, timeout={:?}s", 
+            proxy_type, timeout_secs);
+        
         let client = self
             .create_request(proxy_type, timeout_secs, user_agent, accept_invalid_certs)
             .await?;
 
         let timeout_duration = Duration::from_secs(timeout_secs.unwrap_or(20));
+        logging!(debug, Type::Network, "[NetworkManager] 开始发送请求: url={}, timeout={}s", 
+            clean_url, timeout_duration.as_secs());
+        
+        let request_start = std::time::Instant::now();
         let response = match timeout(timeout_duration, async {
+            logging!(debug, Type::Network, "[NetworkManager] 构造请求对象");
             let mut req = isahc::Request::get(&clean_url);
 
             for (k, v) in extra_headers.iter() {
                 req = req.header(k, v);
             }
 
+            logging!(debug, Type::Network, "[NetworkManager] 发送 HTTP 请求...");
+            let send_start = std::time::Instant::now();
             let mut response = client.send_async(req.body(())?).await?;
+            let send_elapsed = send_start.elapsed();
+            logging!(debug, Type::Network, "[NetworkManager] HTTP 请求发送完成 (耗时: {:?})", send_elapsed);
+            
             let status = response.status();
+            logging!(debug, Type::Network, "[NetworkManager] 接收响应状态码: {}", status);
+            
             let headers = response.headers().clone();
+            logging!(debug, Type::Network, "[NetworkManager] 开始读取响应体...");
+            let read_start = std::time::Instant::now();
             let body = response.text().await?;
+            let read_elapsed = read_start.elapsed();
+            logging!(debug, Type::Network, "[NetworkManager] 响应体读取完成 (耗时: {:?}, 大小: {} bytes)", 
+                read_elapsed, body.len());
+            
             Ok::<_, anyhow::Error>(HttpResponse::new(status, headers, body.into()))
         })
         .await
         {
-            Ok(res) => res?,
+            Ok(res) => {
+                let total_elapsed = request_start.elapsed();
+                logging!(debug, Type::Network, "[NetworkManager] 请求完成 (总耗时: {:?})", total_elapsed);
+                res?
+            }
             Err(_) => {
+                let elapsed = request_start.elapsed();
+                logging!(error, Type::Network, "[NetworkManager] 请求超时 (耗时: {:?}, 超时限制: {}s)", 
+                    elapsed, timeout_duration.as_secs());
                 self.record_connection_error(&format!("Request interrupted: {}", url))
                     .await;
                 return Err(anyhow::anyhow!(

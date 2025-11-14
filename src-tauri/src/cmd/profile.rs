@@ -48,16 +48,27 @@ pub async fn enhance_profiles() -> CmdResult {
 /// 导入配置文件
 #[tauri::command]
 pub async fn import_profile(url: std::string::String, option: Option<PrfOption>) -> CmdResult {
+    let start_time = std::time::Instant::now();
     logging!(info, Type::Cmd, "[导入订阅] 开始导入: {}", url);
+    
+    if let Some(ref opt) = option {
+        logging!(debug, Type::Cmd, "[导入订阅] 选项: with_proxy={:?}, self_proxy={:?}, timeout={:?}", 
+            opt.with_proxy, opt.self_proxy, opt.timeout_seconds);
+    } else {
+        logging!(debug, Type::Cmd, "[导入订阅] 使用默认选项");
+    }
 
     // 直接依赖 PrfItem::from_url 自身的超时/重试逻辑，不再使用 tokio::time::timeout 包裹
+    logging!(debug, Type::Cmd, "[导入订阅] 准备调用 PrfItem::from_url");
     let item = &mut match PrfItem::from_url(&url, None, None, option.as_ref()).await {
         Ok(it) => {
-            logging!(info, Type::Cmd, "[导入订阅] 下载完成，开始保存配置");
+            let elapsed = start_time.elapsed();
+            logging!(info, Type::Cmd, "[导入订阅] 下载完成 (耗时: {:?})，开始保存配置", elapsed);
             it
         }
         Err(e) => {
-            logging!(error, Type::Cmd, "[导入订阅] 下载失败: {}", e);
+            let elapsed = start_time.elapsed();
+            logging!(error, Type::Cmd, "[导入订阅] 下载失败 (耗时: {:?}): {}", elapsed, e);
             return Err(format!("导入订阅失败: {}", e).into());
         }
     };

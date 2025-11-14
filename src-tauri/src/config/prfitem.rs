@@ -1,7 +1,9 @@
 use crate::{
     config::profiles,
+    logging,
     utils::{
         dirs, help,
+        logging::Type,
         network::{NetworkManager, ProxyType},
         tmpl,
     },
@@ -281,6 +283,10 @@ impl PrfItem {
         };
 
         // 使用网络管理器发送请求
+        logging!(info, Type::Network, "[导入订阅] 准备发送网络请求: url={}, proxy_type={:?}, timeout={}s", 
+            url, proxy_type, timeout);
+        let request_start = std::time::Instant::now();
+        
         let resp = match NetworkManager::new()
             .get_with_interrupt(
                 url,
@@ -291,18 +297,28 @@ impl PrfItem {
             )
             .await
         {
-            Ok(r) => r,
+            Ok(r) => {
+                let elapsed = request_start.elapsed();
+                logging!(info, Type::Network, "[导入订阅] 网络请求成功 (耗时: {:?}), 状态码: {}", 
+                    elapsed, r.status());
+                r
+            }
             Err(e) => {
+                let elapsed = request_start.elapsed();
+                logging!(error, Type::Network, "[导入订阅] 网络请求失败 (耗时: {:?}): {}", elapsed, e);
                 tokio::time::sleep(Duration::from_millis(100)).await;
                 bail!("failed to fetch remote profile: {}", e);
             }
         };
 
         let status_code = resp.status();
+        logging!(debug, Type::Network, "[导入订阅] 检查响应状态码: {}", status_code);
         if !status_code.is_success() {
+            logging!(error, Type::Network, "[导入订阅] HTTP 状态码错误: {}", status_code);
             bail!("failed to fetch remote profile with status {status_code}")
         }
 
+        logging!(debug, Type::Network, "[导入订阅] 开始解析响应头和内容");
         let header = resp.headers();
 
         // parse the Subscription UserInfo
@@ -379,18 +395,43 @@ impl PrfItem {
                 .map(|s| s.into())
                 .unwrap_or_else(|| "Remote File".into())
         });
+        
+        logging!(debug, Type::Config, "[导入订阅] 生成配置项: uid={}, file={}, name={}", uid, file, name);
+        
+        logging!(debug, Type::Config, "[导入订阅] 开始读取响应体内容...");
+        let parse_start = std::time::Instant::now();
         let data = resp.text_with_charset()?;
+        let data_size = data.len();
+        logging!(debug, Type::Config, "[导入订阅] 响应体读取完成 (大小: {} bytes, 耗时: {:?})", 
+            data_size, parse_start.elapsed());
 
         // process the charset "UTF-8 with BOM"
         let data = data.trim_start_matches('\u{feff}');
 
+        logging!(debug, Type::Config, "[导入订阅] 开始解析 YAML 格式...");
+        let yaml_start = std::time::Instant::now();
         // check the data whether the valid yaml format
-        let yaml = serde_yaml_ng::from_str::<Mapping>(data)
-            .context("the remote profile data is invalid yaml")?;
+        let yaml = match serde_yaml_ng::from_str::<Mapping>(data) {
+            Ok(y) => {
+                let elapsed = yaml_start.elapsed();
+                logging!(debug, Type::Config, "[导入订阅] YAML 解析成功 (耗时: {:?}, 键数量: {})", 
+                    elapsed, y.len());
+                y
+            }
+            Err(e) => {
+                let elapsed = yaml_start.elapsed();
+                logging!(error, Type::Config, "[导入订阅] YAML 解析失败 (耗时: {:?}): {}", elapsed, e);
+                return Err(anyhow::anyhow!("the remote profile data is invalid yaml: {}", e).into());
+            }
+        };
 
+        logging!(debug, Type::Config, "[导入订阅] 检查配置文件必需字段...");
         if !yaml.contains_key("proxies") && !yaml.contains_key("proxy-providers") {
+            logging!(error, Type::Config, "[导入订阅] 配置文件缺少必需字段: 未找到 'proxies' 或 'proxy-providers'");
             bail!("profile does not contain `proxies` or `proxy-providers`");
         }
+        
+        logging!(info, Type::Config, "[导入订阅] 配置文件验证通过");
 
         if merge.is_none() {
             let merge_item = &mut Self::from_merge(None)?;
