@@ -161,8 +161,20 @@ jobs:
           # Incremental compilation significantly reduces build time for small changes
           # Note: Incremental compilation is now enabled in Cargo.toml fast-release profile
           
-          # Use all available CPU cores for parallel compilation
-          echo "CARGO_BUILD_JOBS=$(nproc || echo 4)" >> $GITHUB_ENV
+          # Use conservative number of parallel jobs to avoid resource exhaustion
+          # RISC-V builds are resource-intensive, so limit parallelism
+          # Use half of available cores or maximum 4, whichever is smaller
+          AVAILABLE_CORES=$(nproc || echo 4)
+          # Limit to max 4 jobs to avoid "Resource temporarily unavailable" errors
+          BUILD_JOBS=$((AVAILABLE_CORES / 2))
+          if [ $BUILD_JOBS -gt 4 ]; then
+            BUILD_JOBS=4
+          fi
+          if [ $BUILD_JOBS -lt 1 ]; then
+            BUILD_JOBS=1
+          fi
+          echo "CARGO_BUILD_JOBS=$BUILD_JOBS" >> $GITHUB_ENV
+          echo "Using $BUILD_JOBS parallel jobs (limited to avoid resource exhaustion)"
           
           echo "CARGO_TERM_PROGRESS_WHEN=always" >> $GITHUB_ENV
           echo "CARGO_TERM_PROGRESS_WIDTH=80" >> $GITHUB_ENV
@@ -177,11 +189,16 @@ jobs:
           
           # Install and configure sccache for RISC-V
           echo "Installing sccache for RISC-V..."
+          # Initialize RUSTC_WRAPPER to avoid unbound variable error
+          export RUSTC_WRAPPER=""
+          echo "RUSTC_WRAPPER=" >> $GITHUB_ENV
+          
           if ! command -v sccache &> /dev/null; then
             # Try to install from system package manager first
             if command -v cargo &> /dev/null; then
               cargo install sccache --locked || {
                 echo "Warning: Failed to install sccache, continuing without it"
+                # Keep RUSTC_WRAPPER empty (already set above)
               }
             fi
           fi
@@ -197,6 +214,7 @@ jobs:
             echo "SCCACHE_DIR=$HOME/.cache/sccache" >> $GITHUB_ENV
           else
             echo "sccache not available, continuing without compilation cache"
+            # RUSTC_WRAPPER is already empty, no need to set it again
           fi
 
       - name: Install project dependencies
@@ -338,7 +356,7 @@ jobs:
           npm run prebuild || echo "Warning: prebuild failed, continuing..."
 
       - name: Build Tauri application
-        timeout-minutes: 120
+        timeout-minutes: 240
         env:
           NODE_OPTIONS: "--max-old-space-size=2048"
         run: |
@@ -352,11 +370,18 @@ jobs:
           echo "Using incremental compilation (enabled in Cargo.toml)"
           echo "Frontend will be built automatically by Tauri's beforeBuildCommand"
           echo "Using ${CARGO_BUILD_JOBS:-4} parallel jobs for Cargo compilation"
-          echo "Build timeout: 120 minutes"
+          echo "Build timeout: 240 minutes"
           
-          if [ -n "$RUSTC_WRAPPER" ]; then
+          # Ensure RUSTC_WRAPPER is set (even if empty) to avoid unbound variable error
+          if [ -z "${RUSTC_WRAPPER:-}" ]; then
+            export RUSTC_WRAPPER=""
+          fi
+          
+          if [ -n "${RUSTC_WRAPPER:-}" ]; then
             echo "Using sccache for compilation caching"
             sccache --show-stats || true
+          else
+            echo "Not using sccache (RUSTC_WRAPPER is empty or not set)"
           fi
           
           # Build with progress monitoring

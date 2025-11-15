@@ -181,17 +181,20 @@ jobs:
             
             # 安装 sccache for RISC-V
             echo "Installing sccache for RISC-V..."
+            # Initialize RUSTC_WRAPPER to avoid unbound variable error
+            export RUSTC_WRAPPER=""
             # Try to use pre-built binary if available, otherwise build from source
             if command -v cargo &> /dev/null; then
               # Build sccache from source for RISC-V
               # This may take some time but ensures compatibility
               cargo install sccache --locked --target riscv64gc-unknown-linux-gnu || {
                 echo "Warning: Failed to install sccache, continuing without it"
-                export RUSTC_WRAPPER=""
+                # Keep RUSTC_WRAPPER empty (already set above)
               }
               if command -v sccache &> /dev/null; then
                 export RUSTC_WRAPPER=sccache
                 export SCCACHE_DIR=/cache/sccache
+                mkdir -p $SCCACHE_DIR
                 sccache --start-server || true
                 echo "sccache installed and configured"
                 sccache --show-stats || true
@@ -294,14 +297,24 @@ jobs:
             echo "Starting Tauri build for RISC-V (Simulation)..."
             echo "Build will use fast-release profile (optimized for speed)"
             echo "Using incremental compilation (enabled in Cargo.toml)"
+            
+            # Ensure RUSTC_WRAPPER is set (even if empty) to avoid unbound variable error
+            if [ -z "${RUSTC_WRAPPER:-}" ]; then
+              export RUSTC_WRAPPER=""
+            fi
+            
             if [ -n "$RUSTC_WRAPPER" ]; then
               echo "Using sccache for compilation caching"
               sccache --show-stats || true
+            else
+              echo "Not using sccache (RUSTC_WRAPPER is empty or not set)"
             fi
-            npm run tauri build -- --target riscv64gc-unknown-linux-gnu --bundles deb,rpm -- --profile fast-release
+            
+            # Build with explicit environment variables
+            RUSTC_WRAPPER="${RUSTC_WRAPPER:-}" npm run tauri build -- --target riscv64gc-unknown-linux-gnu --bundles deb,rpm -- --profile fast-release
             
             # 显示 sccache 统计信息
-            if [ -n "$RUSTC_WRAPPER" ]; then
+            if [ -n "${RUSTC_WRAPPER:-}" ]; then
               echo "sccache statistics after build:"
               sccache --show-stats || true
             fi
