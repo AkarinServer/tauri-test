@@ -48,26 +48,39 @@ pub async fn get_system_info() -> CmdResult<String> {
 pub async fn get_running_mode() -> CmdResult<String> {
     use crate::core::manager::RunningMode;
     
+    logging!(info, Type::Cmd, "[get_running_mode] 命令被调用");
+    
     let mode = CoreManager::global().get_running_mode();
     let stored_mode = (*mode).clone();
+    logging!(info, Type::Cmd, "[get_running_mode] 存储的运行模式: {:?}", stored_mode);
     
     // 关键修复：如果存储的状态是NotRunning，但实际有sidecar进程在运行，则返回Sidecar
     // 这可以修复状态不同步的问题
     if matches!(stored_mode, RunningMode::NotRunning) {
+        logging!(info, Type::Cmd, "[get_running_mode] 状态为 NotRunning，检查实际运行状态");
+        
         // 检查Unix socket是否存在（最可靠的检查方式，不破坏状态）
         let socket_path = crate::config::IClashTemp::guard_external_controller_ipc();
-        if std::path::PathBuf::from(&socket_path).exists() {
+        let socket_path_buf = std::path::PathBuf::from(&socket_path);
+        logging!(info, Type::Cmd, "[get_running_mode] Socket 路径: {:?}", socket_path_buf);
+        logging!(info, Type::Cmd, "[get_running_mode] Socket 存在: {}", socket_path_buf.exists());
+        
+        if socket_path_buf.exists() {
             // Socket存在，说明核心在运行，更新状态
+            logging!(info, Type::Cmd, "[get_running_mode] Socket 存在，核心实际在运行，更新状态为 Sidecar");
             CoreManager::global().set_running_mode(RunningMode::Sidecar);
             return Ok("Sidecar".to_string());
         }
         
+        logging!(info, Type::Cmd, "[get_running_mode] Socket 不存在，确认状态为 NotRunning");
         // 检查是否有sidecar进程在运行（通过检查进程是否存在）
         // 注意：不能使用take_child_sidecar，因为它会移除child
         // 我们通过检查Unix socket来判断，这是最可靠的方式
     }
     
-    Ok(format!("{}", stored_mode))
+    let result = format!("{}", stored_mode);
+    logging!(info, Type::Cmd, "[get_running_mode] 返回运行模式: {}", result);
+    Ok(result)
 }
 
 /// 获取应用的运行时间（毫秒）

@@ -78,11 +78,31 @@ pub async fn change_clash_core(clash_core: String) -> CmdResult<Option<String>> 
 /// 启动核心
 #[tauri::command]
 pub async fn start_core() -> CmdResult {
-    let result = CoreManager::global().start_core().await.stringify_err();
-    if result.is_ok() {
-        handle::Handle::refresh_clash();
+    logging!(info, Type::Core, "===== start_core 命令被调用 =====");
+    logging!(info, Type::Core, "开始启动核心...");
+    
+    let start_time = std::time::Instant::now();
+    let current_mode = CoreManager::global().get_running_mode();
+    logging!(info, Type::Core, "当前运行模式: {:?}", current_mode);
+    
+    let result = CoreManager::global().start_core().await;
+    
+    let elapsed = start_time.elapsed();
+    match &result {
+        Ok(_) => {
+            logging!(info, Type::Core, "核心启动成功，耗时: {:?}", elapsed);
+            logging!(info, Type::Core, "===== start_core 命令执行成功 =====");
+            handle::Handle::refresh_clash();
+        }
+        Err(e) => {
+            logging!(error, Type::Core, "核心启动失败，耗时: {:?}", elapsed);
+            logging!(error, Type::Core, "启动失败原因: {}", e);
+            logging!(error, Type::Core, "错误详情: {:#}", e);
+            logging!(error, Type::Core, "===== start_core 命令执行失败 =====");
+        }
     }
-    result
+    
+    result.stringify_err()
 }
 
 /// 关闭核心

@@ -13,12 +13,46 @@ use smartstring::alias::String;
 
 impl CoreManager {
     pub async fn start_core(&self) -> Result<()> {
-        self.prepare_startup().await?;
-
-        match *self.get_running_mode() {
-            RunningMode::Service => self.start_core_by_service().await,
-            RunningMode::NotRunning | RunningMode::Sidecar => self.start_core_by_sidecar().await,
+        logging!(info, Type::Core, "[start_core] 开始执行核心启动流程");
+        
+        logging!(info, Type::Core, "[start_core] 步骤1: 准备启动环境");
+        match self.prepare_startup().await {
+            Ok(_) => {
+                logging!(info, Type::Core, "[start_core] 步骤1完成: 启动环境准备成功");
+            }
+            Err(e) => {
+                logging!(error, Type::Core, "[start_core] 步骤1失败: 启动环境准备失败: {}", e);
+                logging!(error, Type::Core, "[start_core] 步骤1失败详情: {:#}", e);
+                return Err(e);
+            }
         }
+
+        let running_mode = *self.get_running_mode();
+        logging!(info, Type::Core, "[start_core] 步骤2: 确定运行模式: {:?}", running_mode);
+        
+        logging!(info, Type::Core, "[start_core] 步骤3: 根据运行模式启动核心");
+        let result = match running_mode {
+            RunningMode::Service => {
+                logging!(info, Type::Core, "[start_core] 使用 Service 模式启动");
+                self.start_core_by_service().await
+            }
+            RunningMode::NotRunning | RunningMode::Sidecar => {
+                logging!(info, Type::Core, "[start_core] 使用 Sidecar 模式启动");
+                self.start_core_by_sidecar().await
+            }
+        };
+        
+        match &result {
+            Ok(_) => {
+                logging!(info, Type::Core, "[start_core] 步骤3完成: 核心启动成功");
+            }
+            Err(e) => {
+                logging!(error, Type::Core, "[start_core] 步骤3失败: 核心启动失败: {}", e);
+                logging!(error, Type::Core, "[start_core] 步骤3失败详情: {:#}", e);
+            }
+        }
+        
+        result
     }
 
     pub async fn stop_core(&self) -> Result<()> {
@@ -65,16 +99,32 @@ impl CoreManager {
     }
 
     async fn prepare_startup(&self) -> Result<()> {
+        logging!(info, Type::Core, "[prepare_startup] 开始准备启动环境");
+        
         #[cfg(target_os = "windows")]
-        self.wait_for_service_if_needed().await;
+        {
+            logging!(info, Type::Core, "[prepare_startup] Windows平台: 检查是否需要等待服务");
+            self.wait_for_service_if_needed().await;
+        }
 
+        logging!(info, Type::Core, "[prepare_startup] 检查服务管理器状态");
         let value = SERVICE_MANAGER.lock().await.current();
+        logging!(info, Type::Core, "[prepare_startup] 服务状态: {:?}", value);
+        
         let mode = match value {
-            ServiceStatus::Ready => RunningMode::Service,
-            _ => RunningMode::Sidecar,
+            ServiceStatus::Ready => {
+                logging!(info, Type::Core, "[prepare_startup] 服务已就绪，使用 Service 模式");
+                RunningMode::Service
+            }
+            _ => {
+                logging!(info, Type::Core, "[prepare_startup] 服务未就绪，使用 Sidecar 模式");
+                RunningMode::Sidecar
+            }
         };
 
+        logging!(info, Type::Core, "[prepare_startup] 设置运行模式: {:?}", mode);
         self.set_running_mode(mode);
+        logging!(info, Type::Core, "[prepare_startup] 启动环境准备完成");
         Ok(())
     }
 

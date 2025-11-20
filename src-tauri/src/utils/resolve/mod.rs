@@ -274,27 +274,48 @@ pub(super) async fn init_service_manager() {
 
 pub(super) async fn init_core_manager() {
     // 添加超时和日志，避免核心启动阻塞太久
-    logging!(info, Type::Setup, "开始初始化核心管理器...");
+    logging!(info, Type::Setup, "[init_core_manager] ===== 开始初始化核心管理器 =====");
     eprintln!("[启动诊断] 开始初始化核心管理器...");
     let start_time = std::time::Instant::now();
     
+    // 检查当前运行模式
+    let current_mode = CoreManager::global().get_running_mode();
+    logging!(info, Type::Setup, "[init_core_manager] 当前运行模式: {:?}", current_mode);
+    
     // 使用更详细的诊断包装
+    logging!(info, Type::Setup, "[init_core_manager] 调用 CoreManager::global().init()，超时时间: 5分钟");
     match with_timeout(
         "CoreManager::init",
-        std::time::Duration::from_secs(30), // 30秒超时
+        std::time::Duration::from_secs(300), // 5分钟超时
         CoreManager::global().init(),
     ).await {
         Ok(Ok(())) => {
             let elapsed = start_time.elapsed();
-            logging!(info, Type::Setup, "核心管理器初始化完成，耗时: {:?}", elapsed);
+            let final_mode = CoreManager::global().get_running_mode();
+            logging!(info, Type::Setup, "[init_core_manager] ===== 核心管理器初始化成功 =====");
+            logging!(info, Type::Setup, "[init_core_manager] 耗时: {:?}", elapsed);
+            logging!(info, Type::Setup, "[init_core_manager] 最终运行模式: {:?}", final_mode);
             eprintln!("[启动诊断] ✓ 核心管理器初始化完成，耗时: {:?}", elapsed);
         }
         Ok(Err(e)) => {
-            logging!(error, Type::Setup, "核心管理器初始化失败: {}", e);
+            let elapsed = start_time.elapsed();
+            let final_mode = CoreManager::global().get_running_mode();
+            logging!(error, Type::Setup, "[init_core_manager] ===== 核心管理器初始化失败 =====");
+            logging!(error, Type::Setup, "[init_core_manager] 耗时: {:?}", elapsed);
+            logging!(error, Type::Setup, "[init_core_manager] 失败原因: {}", e);
+            logging!(error, Type::Setup, "[init_core_manager] 失败详情: {:#}", e);
+            logging!(error, Type::Setup, "[init_core_manager] 最终运行模式: {:?}", final_mode);
             eprintln!("[启动诊断] ✗ 核心管理器初始化失败: {}", e);
+            eprintln!("[启动诊断] 错误详情: {:#}", e);
         }
         Err(e) => {
-            logging!(error, Type::Setup, "核心管理器初始化超时: {}", e);
+            let elapsed = start_time.elapsed();
+            let final_mode = CoreManager::global().get_running_mode();
+            logging!(error, Type::Setup, "[init_core_manager] ===== 核心管理器初始化超时 =====");
+            logging!(error, Type::Setup, "[init_core_manager] 耗时: {:?}", elapsed);
+            logging!(error, Type::Setup, "[init_core_manager] 超时原因: {}", e);
+            logging!(error, Type::Setup, "[init_core_manager] 最终运行模式: {:?}", final_mode);
+            logging!(error, Type::Setup, "[init_core_manager] 注意: 即使超时也继续，让应用能够启动");
             eprintln!("[启动诊断] ✗ 核心管理器初始化超时: {}", e);
             // 即使超时也继续，让应用能够启动
         }

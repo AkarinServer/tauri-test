@@ -88,8 +88,26 @@ impl CoreManager {
     }
 
     pub async fn init(&self) -> Result<()> {
-        self.start_core().await?;
-        Ok(())
+        logging!(info, Type::Core, "[CoreManager::init] ===== 核心管理器初始化开始 =====");
+        let start_time = std::time::Instant::now();
+        let current_mode = self.get_running_mode();
+        logging!(info, Type::Core, "[CoreManager::init] 当前运行模式: {:?}", current_mode);
+        
+        logging!(info, Type::Core, "[CoreManager::init] 调用 start_core() 启动核心");
+        match self.start_core().await {
+            Ok(_) => {
+                let elapsed = start_time.elapsed();
+                logging!(info, Type::Core, "[CoreManager::init] ===== 核心管理器初始化成功，耗时: {:?} =====", elapsed);
+                Ok(())
+            }
+            Err(e) => {
+                let elapsed = start_time.elapsed();
+                logging!(error, Type::Core, "[CoreManager::init] ===== 核心管理器初始化失败，耗时: {:?} =====", elapsed);
+                logging!(error, Type::Core, "[CoreManager::init] 失败原因: {}", e);
+                logging!(error, Type::Core, "[CoreManager::init] 失败详情: {:#}", e);
+                Err(e)
+            }
+        }
     }
 }
 
