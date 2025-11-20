@@ -277,6 +277,11 @@ export async function clearAllData(): Promise<void> {
   return invoke<void>("clear_all_data");
 }
 
+// System commands
+export async function getAppVersion(): Promise<string> {
+  return invoke<string>("get_app_version");
+}
+
 // Core commands
 export async function startCore(): Promise<void> {
   return invoke<void>("start_core");

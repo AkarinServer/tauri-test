@@ -28,18 +28,38 @@ use tokio::fs::DirEntry;
 /// initialize this instance's log file
 #[cfg(not(feature = "tauri-dev"))]
 pub async fn init_logger() -> Result<()> {
+    eprintln!("[Core Startup] [init_logger] ===== init_logger() called =====");
+    eprintln!("[Core Startup] [init_logger] Step 1: Reading Config::verge() to get log settings...");
+    let init_logger_start = std::time::Instant::now();
+    let config_read_start = std::time::Instant::now();
+    
     // TODO 提供 runtime 级别实时修改
     let (log_level, log_max_size, log_max_count) = {
+        eprintln!("[Core Startup] [init_logger] Calling Config::verge().await...");
+        let verge_read_start = std::time::Instant::now();
         let verge_guard = Config::verge().await;
+        let verge_read_elapsed = verge_read_start.elapsed();
+        eprintln!("[Core Startup] [init_logger] Config::verge().await completed, elapsed: {:?}", verge_read_elapsed);
+        
+        eprintln!("[Core Startup] [init_logger] Getting verge data_arc()...");
         let verge = verge_guard.data_arc();
-        (
+        eprintln!("[Core Startup] [init_logger] Extracting log settings...");
+        let settings = (
             verge.get_log_level(),
             verge.app_log_max_size.unwrap_or(128),
             verge.app_log_max_count.unwrap_or(8),
-        )
+        );
+        let config_read_elapsed = config_read_start.elapsed();
+        eprintln!("[Core Startup] [init_logger] Step 1 completed: Config read finished, elapsed: {:?}", config_read_elapsed);
+        eprintln!("[Core Startup] [init_logger] Log settings: level={:?}, max_size={}, max_count={}", settings.0, settings.1, settings.2);
+        settings
     };
 
+    eprintln!("[Core Startup] [init_logger] Step 2: Getting log directory...");
     let log_dir = dirs::app_logs_dir()?;
+    eprintln!("[Core Startup] [init_logger] Log directory: {:?}", log_dir);
+    
+    eprintln!("[Core Startup] [init_logger] Step 3: Building log spec...");
     let mut spec = LogSpecBuilder::new();
     let level = std::env::var("RUST_LOG")
         .ok()
@@ -76,13 +96,19 @@ pub async fn init_logger() -> Result<()> {
         "kode_bridge",
     ])));
 
+    eprintln!("[Core Startup] [init_logger] Step 4: Starting logger...");
+    let logger_start_time = std::time::Instant::now();
     let _handle = logger.start()?;
+    let logger_start_elapsed = logger_start_time.elapsed();
+    eprintln!("[Core Startup] [init_logger] Step 4 completed: Logger started, elapsed: {:?}", logger_start_elapsed);
 
     // TODO 全局 logger handle 控制
     // GlobalLoggerProxy::global().set_inner(handle);
     // TODO 提供前端设置等级，热更新等级
     // logger.parse_new_spec(spec)
 
+    let total_elapsed = init_logger_start.elapsed();
+    eprintln!("[Core Startup] [init_logger] ===== init_logger() completed successfully, total elapsed: {:?} =====", total_elapsed);
     Ok(())
 }
 

@@ -2,14 +2,17 @@ import { Box, List, Paper, ThemeProvider, createTheme } from "@mui/material";
 import { Outlet } from "react-router";
 import { useTranslation } from "react-i18next";
 import { SWRConfig } from "swr";
+import { useEffect, useState } from "react";
 
 import { BaseErrorBoundary } from "@/components/base";
 import { LayoutItem } from "@/components/layout/layout-item";
 import { LayoutTraffic } from "@/components/layout/layout-traffic";
 import { useThemeMode } from "@/services/states";
+import { getAppVersion } from "@/services/cmds";
 import { navItems } from "./_routers";
 
 const Layout = () => {
+  const [appVersion, setAppVersion] = useState<string>("RV Verge");
   let mode: "light" | "dark" = "light";
   try {
     mode = useThemeMode();
@@ -23,6 +26,18 @@ const Layout = () => {
       mode: mode === "light" ? "light" : "dark",
     },
   });
+
+  // 获取应用版本号
+  useEffect(() => {
+    getAppVersion()
+      .then((version) => {
+        setAppVersion(version);
+      })
+      .catch((error) => {
+        console.error("[Layout] Failed to get app version:", error);
+        // 保持默认值 "RV Verge"
+      });
+  }, []);
 
   return (
     <SWRConfig
@@ -109,7 +124,7 @@ const Layout = () => {
                     color: "text.primary",
                   }}
                 >
-                  RV Verge
+                  {appVersion}
                 </Box>
               </Box>
 

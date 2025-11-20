@@ -94,3 +94,11 @@ pub fn get_app_uptime() -> CmdResult<u128> {
 pub fn is_admin() -> CmdResult<bool> {
     Ok(*APPS_RUN_AS_ADMIN)
 }
+
+/// 获取应用版本号
+#[tauri::command]
+pub fn get_app_version() -> CmdResult<String> {
+    let app_handle = handle::Handle::app_handle();
+    let version = app_handle.package_info().version.to_string();
+    Ok(version)
+}

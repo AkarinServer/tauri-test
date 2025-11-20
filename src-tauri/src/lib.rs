@@ -178,6 +178,7 @@ mod app_init {
             cmd::get_app_uptime,
             cmd::get_auto_launch_status,
             cmd::is_admin,
+            cmd::get_app_version,
             cmd::entry_lightweight_mode,
             cmd::exit_lightweight_mode,
             cmd::install_service,

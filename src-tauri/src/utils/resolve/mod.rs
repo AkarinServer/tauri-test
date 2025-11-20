@@ -34,34 +34,47 @@ pub fn resolve_setup_sync() {
 }
 
 pub fn resolve_setup_async() {
+    eprintln!("[Core Startup] ===== resolve_setup_async() called, spawning async task =====");
     AsyncHandler::spawn(|| async {
-        logging!(info, Type::Setup, "[resolve_setup_async] ===== 异步初始化流程开始 =====");
+        eprintln!("[Core Startup] ===== Async task started executing =====");
         eprintln!("[Core Startup] ===== Async initialization flow started =====");
         let async_flow_start = std::time::Instant::now();
         
+        // Note: logging! macro may not work before logger is initialized
+        // So we use eprintln! for all critical diagnostics
+        
         #[cfg(not(feature = "tauri-dev"))]
         {
-            logging!(info, Type::Setup, "[resolve_setup_async] 开始初始化日志系统");
-            eprintln!("[Core Startup] Starting logger system initialization");
+            eprintln!("[Core Startup] Step 0: Starting logger system initialization");
+            eprintln!("[Core Startup] This step will read Config::verge() to get log settings");
             let logger_start = std::time::Instant::now();
+            
+            eprintln!("[Core Startup] Calling resolve_setup_logger()...");
             resolve_setup_logger().await;
+            
             let logger_elapsed = logger_start.elapsed();
+            eprintln!("[Core Startup] Step 0 completed: Logger system initialization finished, elapsed: {:?}", logger_elapsed);
+            
+            // Now that logger is initialized, we can use logging! macro
             logging!(info, Type::Setup, "[resolve_setup_async] 日志系统初始化完成，耗时: {:?}", logger_elapsed);
-            eprintln!("[Core Startup] Logger system initialization completed, elapsed: {:?}", logger_elapsed);
         }
         
+        eprintln!("[Core Startup] Application version: {}", env!("CARGO_PKG_VERSION"));
+        // Now logger is initialized, we can use logging! macro
         logging!(
             info,
             Type::ClashVergeRev,
             "Version: {}",
             env!("CARGO_PKG_VERSION")
         );
-        eprintln!("[Core Startup] Application version: {}", env!("CARGO_PKG_VERSION"));
 
         // 将非关键初始化移到后台，不阻塞窗口显示
+        eprintln!("[Core Startup] Spawning background initialization task...");
         let _background_init = AsyncHandler::spawn(|| async {
+            eprintln!("[Core Startup] [background_init] Background initialization task started");
             let start_time = std::time::Instant::now();
             logging!(info, Type::Setup, "开始后台初始化...");
+            eprintln!("[Core Startup] [background_init] Starting background tasks...");
             
             futures::join!(
                 init_work_config(),
@@ -71,12 +84,13 @@ pub fn resolve_setup_async() {
             
             let elapsed = start_time.elapsed();
             logging!(info, Type::Setup, "后台初始化完成，耗时: {:?}", elapsed);
+            eprintln!("[Core Startup] [background_init] Background initialization completed, elapsed: {:?}", elapsed);
         });
 
         // 只等待最少的配置初始化，其他都移到后台
         // 添加超时保护，避免配置初始化阻塞启动
-        logging!(info, Type::Setup, "[resolve_setup_async] 开始初始化配置 (超时: 30秒)");
-        eprintln!("[Core Startup] Starting config initialization (timeout: 30s)");
+        eprintln!("[Core Startup] Step 1: Starting config initialization (timeout: 30s)");
+        eprintln!("[Core Startup] Step 1: This will call init_verge_config()");
         let config_start = std::time::Instant::now();
         match with_timeout(
             "init_verge_config",
@@ -85,18 +99,21 @@ pub fn resolve_setup_async() {
         ).await {
             Ok(_) => {
                 let config_elapsed = config_start.elapsed();
+                eprintln!("[Core Startup] Step 1 completed: Config initialization succeeded, elapsed: {:?}", config_elapsed);
                 logging!(info, Type::Setup, "配置初始化完成，耗时: {:?}", config_elapsed);
             }
             Err(e) => {
+                let config_elapsed = config_start.elapsed();
+                eprintln!("[Core Startup] Step 1 failed: Config initialization failed or timeout: {}, elapsed: {:?}", e, config_elapsed);
                 logging!(error, Type::Setup, "配置初始化失败或超时: {}", e);
-                eprintln!("[启动诊断] ✗ 配置初始化失败或超时: {}", e);
             }
         }
         
         // 配置验证也移到后台，不阻塞窗口显示
+        eprintln!("[Core Startup] Spawning config verification task...");
         let _verify_init = AsyncHandler::spawn(|| async {
-            logging!(info, Type::Setup, "[resolve_setup_async] 开始验证配置 (超时: 30秒)");
-            eprintln!("[Core Startup] Starting config verification (timeout: 30s)");
+            eprintln!("[Core Startup] [verify_init] Config verification task started");
+            eprintln!("[Core Startup] [verify_init] Starting config verification (timeout: 30s)");
             let verify_start = std::time::Instant::now();
             let verify_result = tokio::time::timeout(
                 std::time::Duration::from_secs(30), // 从5秒增加到30秒
@@ -106,9 +123,12 @@ pub fn resolve_setup_async() {
             match verify_result {
                 Ok(()) => {
                     let elapsed = verify_start.elapsed();
+                    eprintln!("[Core Startup] [verify_init] Config verification completed, elapsed: {:?}", elapsed);
                     logging!(info, Type::Setup, "配置验证完成，耗时: {:?}", elapsed);
                 }
                 Err(_) => {
+                    let elapsed = verify_start.elapsed();
+                    eprintln!("[Core Startup] [verify_init] Config verification timeout, elapsed: {:?}", elapsed);
                     logging!(warn, Type::Setup, "配置验证超时，继续运行");
                 }
             }
@@ -116,8 +136,8 @@ pub fn resolve_setup_async() {
         
         // 立即显示窗口，不等待任何后台初始化
         // 添加超时保护，避免窗口初始化阻塞启动
-        logging!(info, Type::Setup, "[resolve_setup_async] 开始初始化窗口 (超时: 60秒)");
-        eprintln!("[Core Startup] Starting window initialization (timeout: 60s)");
+        eprintln!("[Core Startup] Step 2: Starting window initialization (timeout: 60s)");
+        eprintln!("[Core Startup] Step 2: This will call init_window()");
         let window_start = std::time::Instant::now();
         match with_timeout(
             "init_window",
@@ -126,23 +146,26 @@ pub fn resolve_setup_async() {
         ).await {
             Ok(_) => {
                 let window_elapsed = window_start.elapsed();
+                eprintln!("[Core Startup] Step 2 completed: Window initialization succeeded, elapsed: {:?}", window_elapsed);
                 logging!(info, Type::Setup, "窗口初始化完成，耗时: {:?}", window_elapsed);
             }
             Err(e) => {
+                let window_elapsed = window_start.elapsed();
+                eprintln!("[Core Startup] Step 2 failed: Window initialization failed or timeout: {}, elapsed: {:?}", e, window_elapsed);
                 logging!(error, Type::Setup, "窗口初始化失败或超时: {}", e);
-                eprintln!("[启动诊断] ✗ 窗口初始化失败或超时: {}", e);
             }
         }
         
         // 不等待后台初始化，让它们在后台完成
         // 这样可以立即显示窗口，大大加快启动速度
 
+        eprintln!("[Core Startup] Step 3: Starting core initialization task");
+        eprintln!("[Core Startup] Step 3: Spawning core_init async task...");
         logging!(info, Type::Setup, "[resolve_setup_async] ===== 开始启动核心初始化任务 =====");
-        eprintln!("[Core Startup] ===== Starting core initialization task =====");
         
         let core_init = AsyncHandler::spawn(|| async {
+            eprintln!("[Core Startup] [core_init] ===== Core initialization task started executing =====");
             logging!(info, Type::Setup, "[core_init] ===== 核心初始化任务开始执行 =====");
-            eprintln!("[Core Startup] [core_init] Core initialization task started");
             let task_start = std::time::Instant::now();
             
             // 添加超时保护
@@ -202,21 +225,24 @@ pub fn resolve_setup_async() {
             eprintln!("[Core Startup] [core_init] ===== Core initialization task completed, total elapsed: {:?} =====", total_elapsed);
         });
 
+        eprintln!("[Core Startup] Step 4: Preparing system tray initialization");
         let tray_init = async {
+            eprintln!("[Core Startup] [tray_init] Starting system tray initialization");
             logging!(info, Type::Setup, "[resolve_setup_async] 开始初始化系统托盘");
-            eprintln!("[Core Startup] Starting system tray initialization");
             let tray_start = std::time::Instant::now();
             init_tray().await;
             refresh_tray_menu().await;
             let tray_elapsed = tray_start.elapsed();
+            eprintln!("[Core Startup] [tray_init] System tray initialization completed, elapsed: {:?}", tray_elapsed);
             logging!(info, Type::Setup, "[resolve_setup_async] 系统托盘初始化完成，耗时: {:?}", tray_elapsed);
-            eprintln!("[Core Startup] System tray initialization completed, elapsed: {:?}", tray_elapsed);
         };
 
+        eprintln!("[Core Startup] Step 5: Starting concurrent execution of all initialization tasks");
+        eprintln!("[Core Startup] Step 5: This includes: core_init, tray_init, timer, hotkey, lightweight, backup");
         logging!(info, Type::Setup, "[resolve_setup_async] ===== 开始并发执行所有初始化任务 =====");
-        eprintln!("[Core Startup] ===== Starting concurrent execution of all initialization tasks =====");
         let join_start = std::time::Instant::now();
         
+        eprintln!("[Core Startup] Step 5: Calling futures::join! to wait for all tasks...");
         let _ = futures::join!(
             core_init,
             tray_init,
@@ -227,12 +253,12 @@ pub fn resolve_setup_async() {
         );
         
         let join_elapsed = join_start.elapsed();
+        eprintln!("[Core Startup] Step 5 completed: All initialization tasks finished, elapsed: {:?}", join_elapsed);
         logging!(info, Type::Setup, "[resolve_setup_async] ===== 所有初始化任务完成，总耗时: {:?} =====", join_elapsed);
-        eprintln!("[Core Startup] ===== All initialization tasks completed, total elapsed: {:?} =====", join_elapsed);
         
         let total_elapsed = async_flow_start.elapsed();
-        logging!(info, Type::Setup, "[resolve_setup_async] ===== 异步初始化流程完成，总耗时: {:?} =====", total_elapsed);
         eprintln!("[Core Startup] ===== Async initialization flow completed, total elapsed: {:?} =====", total_elapsed);
+        logging!(info, Type::Setup, "[resolve_setup_async] ===== 异步初始化流程完成，总耗时: {:?} =====", total_elapsed);
     });
 }
 
@@ -259,12 +285,22 @@ pub(super) fn init_scheme() {
 
 #[cfg(not(feature = "tauri-dev"))]
 pub(super) async fn resolve_setup_logger() {
-    eprintln!("[RV Verge] Starting to initialize logger system...");
+    eprintln!("[Core Startup] [resolve_setup_logger] ===== Starting logger system initialization =====");
+    eprintln!("[Core Startup] [resolve_setup_logger] This will call init::init_logger()");
+    eprintln!("[Core Startup] [resolve_setup_logger] Note: init_logger() needs to read Config::verge() first");
+    
+    let logger_init_start = std::time::Instant::now();
+    eprintln!("[Core Startup] [resolve_setup_logger] Calling init::init_logger()...");
+    
     if let Err(e) = init::init_logger().await {
-        eprintln!("[RV Verge] FAILED: Logger initialization failed: {}", e);
+        let elapsed = logger_init_start.elapsed();
+        eprintln!("[Core Startup] [resolve_setup_logger] ✗ FAILED: Logger initialization failed after {:?}", elapsed);
+        eprintln!("[Core Startup] [resolve_setup_logger] Error: {}", e);
+        eprintln!("[Core Startup] [resolve_setup_logger] Error details: {:#}", e);
         // Continue running even if logger initialization fails
     } else {
-        eprintln!("[RV Verge] OK: Logger initialization succeeded");
+        let elapsed = logger_init_start.elapsed();
+        eprintln!("[Core Startup] [resolve_setup_logger] ✓ OK: Logger initialization succeeded, elapsed: {:?}", elapsed);
     }
 }
 
