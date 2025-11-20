@@ -76,7 +76,7 @@ export const ProxyItem = (props: Props) => {
     if (delayValue === -2) return t("proxies.item.testing");
     if (delayValue === 0 || delayValue >= timeout) return t("proxies.item.timeout");
     if (delayValue > 1e5) return t("proxies.item.error");
-    return `${delayValue} ${t("proxies.item.ms")}`;
+    return `${delayValue} ms`;
   };
 
   const getDelayColor = (delayValue: number): string => {
