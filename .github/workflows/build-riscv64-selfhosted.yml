@@ -353,7 +353,7 @@ jobs:
 
       - name: Run prebuild
         run: |
-          npm run prebuild || echo "Warning: prebuild failed, continuing..."
+          npm run prebuild -- riscv64gc-unknown-linux-gnu || echo "Warning: prebuild failed, continuing..."
 
       - name: Build Tauri application
         timeout-minutes: 240

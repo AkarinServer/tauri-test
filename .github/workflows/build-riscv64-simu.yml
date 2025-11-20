@@ -290,7 +290,7 @@ jobs:
             echo "Dependencies installed. vite.config.ts will handle SWC/Babel selection based on architecture."
             
             # 运行 prebuild
-            npm run prebuild || echo "Warning: prebuild failed, continuing..."
+            npm run prebuild -- riscv64gc-unknown-linux-gnu || echo "Warning: prebuild failed, continuing..."
             
             # 构建 Tauri 应用（使用 deb 和 rpm bundles，fast-release profile）
             # Note: Tauri's beforeBuildCommand will build frontend automatically
