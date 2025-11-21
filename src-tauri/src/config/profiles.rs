@@ -172,7 +172,18 @@ impl IProfiles {
             let file = item.file.clone().ok_or_else(|| {
                 anyhow::anyhow!("file field is required when file_data is provided")
             })?;
-            let path = dirs::app_profiles_dir()?.join(file.as_str());
+
+            let profiles_dir = dirs::app_profiles_dir()?;
+            fs::create_dir_all(&profiles_dir)
+                .await
+                .with_context(|| {
+                    format!(
+                        "failed to ensure profiles directory \"{}\"",
+                        profiles_dir.display()
+                    )
+                })?;
+
+            let path = profiles_dir.join(file.as_str());
 
             fs::write(&path, file_data.as_bytes())
                 .await

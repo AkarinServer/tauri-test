@@ -587,7 +587,16 @@ impl PrfItem {
             .file
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("could not find the file"))?;
-        let path = dirs::app_profiles_dir()?.join(file.as_str());
+        let profiles_dir = dirs::app_profiles_dir()?;
+        fs::create_dir_all(&profiles_dir)
+            .await
+            .with_context(|| {
+                format!(
+                    "failed to ensure profiles directory \"{}\"",
+                    profiles_dir.display()
+                )
+            })?;
+        let path = profiles_dir.join(file.as_str());
         fs::write(path, data.as_bytes())
             .await
             .context("failed to save the file")
